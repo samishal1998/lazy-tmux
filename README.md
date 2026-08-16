@@ -50,9 +50,20 @@ run inside tmux, so `ltm w ls` inside tmux just works.
 ## Shell completions
 
 `ltm completions <shell>` prints a completion script to stdout for `bash`,
-`zsh`, `fish`, `elvish`, or `powershell`. Completions cover every
-subcommand, alias, and flag; regenerate the file after upgrading `ltm` so
-new commands show up.
+`zsh`, `fish`, `elvish`, or `powershell`. Scripts are generated from the
+binary's own command tree, so they always match the `ltm` that produced
+them — but an installed file is a snapshot, so rerun the install after
+upgrading `ltm` to pick up new commands.
+
+The easy way — write straight to the shell's standard location:
+
+```sh
+ltm completions bash --install
+ltm completions zsh --install    # detects oh-my-zsh and uses its fpath dir
+ltm completions fish --install
+```
+
+Or do it manually:
 
 ### bash
 

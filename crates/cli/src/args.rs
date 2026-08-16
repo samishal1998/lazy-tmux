@@ -122,6 +122,10 @@ pub enum Cmd {
     Completions {
         /// Shell to generate completions for
         shell: clap_complete::Shell,
+        /// Write to the shell's standard completions directory instead of
+        /// stdout (rerun after upgrading ltm to pick up new commands)
+        #[arg(long)]
+        install: bool,
     },
     /// Open the TUI session manager (also the default with no arguments)
     Ui,

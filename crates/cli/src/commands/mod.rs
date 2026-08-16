@@ -1,3 +1,4 @@
+pub mod completions;
 pub mod context;
 pub mod doctor;
 pub mod macros;
