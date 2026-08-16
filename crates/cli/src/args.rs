@@ -54,6 +54,14 @@ pub enum Cmd {
     /// Show where you are relative to tmux (direct pane, nested, outside…)
     #[command(visible_alias = "ctx")]
     Context,
+    /// Guided interactive mode: menus for every action
+    #[command(visible_alias = "i")]
+    Interactive,
+    /// Generate shell completions (bash, zsh, fish, elvish, powershell)
+    Completions {
+        /// Shell to generate completions for
+        shell: clap_complete::Shell,
+    },
     /// Open the TUI session manager (also the default with no arguments)
     Ui,
 }

@@ -15,3 +15,4 @@ lazytmux-tui.workspace = true
 anyhow.workspace = true
 clap = { version = "4", features = ["derive"] }
 inquire = "0.7"
+clap_complete = "4.6.9"

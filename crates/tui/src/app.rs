@@ -2,7 +2,7 @@
 
 use std::time::{Duration, Instant};
 
-use lazytmux_core::{Pane, Session, TmuxContext, Tmux, Window};
+use lazytmux_core::{Location, Pane, Session, TmuxContext, Tmux, Window};
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::widgets::ListState;
 
@@ -157,9 +157,26 @@ impl App {
 
     pub fn refresh_preview(&mut self) {
         self.preview = match self.selected_pane() {
+            // Capturing the pane we are displayed in would show this very
+            // TUI (preview inside preview inside...) — hall-of-mirrors.
+            Some(pane) if self.is_own_pane(&pane.id) => {
+                "\n   you are here — this pane is running lazy-tmux".into()
+            }
             Some(pane) => self.tmux.capture_pane(&pane.id).unwrap_or_default(),
             None => String::new(),
         };
+    }
+
+    /// Is this the pane our own output is displayed in?
+    fn is_own_pane(&self, pane_id: &str) -> bool {
+        match &self.ctx {
+            TmuxContext::Inside {
+                pane_id: own,
+                location,
+                ..
+            } => own == pane_id && !matches!(location, Location::EnvInherited),
+            _ => false,
+        }
     }
 
     pub fn on_tick(&mut self) {

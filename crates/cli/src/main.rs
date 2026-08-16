@@ -33,6 +33,17 @@ fn run(cli: Cli) -> Result<()> {
 
     match cli.command {
         None | Some(Cmd::Ui) => ui(&tmux, &ctx),
+        Some(Cmd::Interactive) => commands::menu::run(&tmux, &ctx),
+        Some(Cmd::Completions { shell }) => {
+            use clap::CommandFactory;
+            use std::io::Write;
+            let mut buf = Vec::new();
+            clap_complete::generate(shell, &mut Cli::command(), "ltm", &mut buf);
+            // Ignore write errors so `ltm completions bash | head` doesn't
+            // panic on a closed pipe.
+            let _ = std::io::stdout().write_all(&buf);
+            Ok(())
+        }
         Some(Cmd::Context) => commands::context::show(&ctx),
         Some(Cmd::Attach { name }) => commands::sessions::attach(&tmux, &ctx, name),
         Some(Cmd::Sessions { cmd }) => match cmd.unwrap_or(SessionsCmd::List) {

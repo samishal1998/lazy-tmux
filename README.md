@@ -36,10 +36,25 @@ aliases: `ltm s ls`, `ltm w n`, `ltm a`).
 | `ltm panes` (`p`) `[-s session] [-w window]` | `list`, `split [index] [--right]`, `kill [index]` |
 | `ltm attach` (`a`) | shortcut for `sessions attach` |
 | `ltm context` (`ctx`) | where am I relative to tmux, with the annotated process ancestry |
+| `ltm interactive` (`i`) | guided menu mode — no commands to remember, Esc goes back a level |
+| `ltm completions <shell>` | generate shell completions (bash, zsh, fish, elvish, powershell) |
 | `ltm ui` | the TUI (also the default when run with no arguments) |
 
 `windows`/`panes` default to the session/window you are currently in when
 run inside tmux, so `ltm w ls` inside tmux just works.
+
+## Shell completions
+
+```sh
+# bash
+ltm completions bash > ~/.local/share/bash-completion/completions/ltm
+
+# zsh (make sure the directory is in your $fpath before compinit)
+mkdir -p ~/.zfunc && ltm completions zsh > ~/.zfunc/_ltm
+
+# fish
+ltm completions fish > ~/.config/fish/completions/ltm.fish
+```
 
 ## The TUI
 
