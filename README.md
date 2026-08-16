@@ -45,15 +45,59 @@ run inside tmux, so `ltm w ls` inside tmux just works.
 
 ## Shell completions
 
+`ltm completions <shell>` prints a completion script to stdout for `bash`,
+`zsh`, `fish`, `elvish`, or `powershell`. Completions cover every
+subcommand, alias, and flag; regenerate the file after upgrading `ltm` so
+new commands show up.
+
+### bash
+
+Requires the `bash-completion` package (preinstalled on most distros).
+
 ```sh
-# bash
+mkdir -p ~/.local/share/bash-completion/completions
 ltm completions bash > ~/.local/share/bash-completion/completions/ltm
+```
 
-# zsh (make sure the directory is in your $fpath before compinit)
-mkdir -p ~/.zfunc && ltm completions zsh > ~/.zfunc/_ltm
+Reopen the shell, or try it in the current one without installing:
 
-# fish
+```sh
+source <(ltm completions bash)
+```
+
+### zsh
+
+Put the script in a directory that is in `$fpath` **before** `compinit`
+runs:
+
+```sh
+mkdir -p ~/.zfunc
+ltm completions zsh > ~/.zfunc/_ltm
+```
+
+Then in `~/.zshrc` (the `fpath` line must come before `compinit`):
+
+```sh
+fpath=(~/.zfunc $fpath)
+autoload -Uz compinit && compinit
+```
+
+If completions don't appear, rebuild the completion cache:
+`rm -f ~/.zcompdump && compinit`.
+
+### fish
+
+fish auto-loads anything in this directory — no config changes needed:
+
+```sh
 ltm completions fish > ~/.config/fish/completions/ltm.fish
+```
+
+### elvish / powershell
+
+```sh
+ltm completions elvish     # add to ~/.config/elvish/rc.elv via eval
+ltm completions powershell # dot-source from $PROFILE
 ```
 
 ## The TUI
