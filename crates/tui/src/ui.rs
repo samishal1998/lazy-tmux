@@ -37,6 +37,12 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         Some(Modal::Help) => draw_help(frame),
         Some(Modal::Input { title, buffer, .. }) => draw_input(frame, &title, &buffer),
         Some(Modal::Confirm { text, .. }) => draw_confirm(frame, &text),
+        Some(Modal::Pick {
+            title,
+            items,
+            selected,
+            ..
+        }) => draw_pick(frame, &title, &items, selected),
         None => {}
     }
 }
@@ -254,6 +260,7 @@ fn draw_keybar(frame: &mut Frame, app: &App, area: Rect) {
                     ("n", "new"),
                     ("r", "rename"),
                     ("d", "kill"),
+                    ("D", "detach"),
                     ("tab", "panel"),
                     ("?", "help"),
                     ("q", "quit"),
@@ -263,17 +270,21 @@ fn draw_keybar(frame: &mut Frame, app: &App, area: Rect) {
                     ("n", "new"),
                     ("r", "rename"),
                     ("d", "kill"),
-                    ("tab", "panel"),
+                    ("[ ]", "reorder"),
+                    ("m", "move"),
+                    ("o", "layout"),
                     ("?", "help"),
                     ("q", "quit"),
                 ],
                 Focus::Panes => &[
                     ("↵", "open"),
-                    ("s", "split below"),
-                    ("v", "split right"),
+                    ("s/v", "split"),
+                    ("z", "zoom"),
+                    ("HJKL", "resize"),
+                    ("[ ]", "reorder"),
+                    ("b", "break"),
                     ("d", "kill"),
                     ("?", "help"),
-                    ("q", "quit"),
                 ],
             };
             let mut spans = vec![Span::raw(" ")];
@@ -340,8 +351,35 @@ fn draw_confirm(frame: &mut Frame, text: &str) {
     frame.render_widget(para, area);
 }
 
+fn draw_pick(frame: &mut Frame, title: &str, items: &[(String, String)], selected: usize) {
+    let height = (items.len() as u16 + 2).min(14);
+    let area = centered(50, height, frame.area());
+    frame.render_widget(Clear, area);
+    let lines: Vec<Line> = items
+        .iter()
+        .enumerate()
+        .map(|(i, (_, label))| {
+            if i == selected {
+                Line::from(Span::styled(
+                    format!(" > {label}"),
+                    Style::new().fg(ACCENT).bold(),
+                ))
+            } else {
+                Line::from(Span::raw(format!("   {label}")))
+            }
+        })
+        .collect();
+    let para = Paragraph::new(lines).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::new().fg(ACCENT))
+            .title(format!(" {title} ")),
+    );
+    frame.render_widget(para, area);
+}
+
 fn draw_help(frame: &mut Frame) {
-    let area = centered(60, 18, frame.area());
+    let area = centered(64, 24, frame.area());
     frame.render_widget(Clear, area);
     let rows: &[(&str, &str)] = &[
         ("j/k, ↓/↑", "move selection"),
@@ -350,9 +388,17 @@ fn draw_help(frame: &mut Frame) {
         ("1 / 2 / 3", "jump to sessions / windows / panes"),
         ("enter", "attach or switch to selection"),
         ("n", "new session / window"),
-        ("r", "rename session / window"),
+        ("r", "rename session / window / pane title"),
         ("d, x", "kill selection (with confirm)"),
+        ("D", "detach clients from session"),
         ("s / v", "split pane below / right"),
+        ("z", "toggle pane zoom"),
+        ("H/J/K/L", "resize pane left/down/up/right"),
+        ("[ / ]", "swap with previous / next (panes, windows)"),
+        ("b", "break pane out into its own window"),
+        ("m", "move window to another session"),
+        ("o", "cycle window layout"),
+        ("M", "toggle mouse mode (global)"),
         ("R", "refresh now"),
         ("?", "toggle this help"),
         ("q, esc", "quit"),

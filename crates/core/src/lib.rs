@@ -7,6 +7,7 @@
 pub mod attach;
 pub mod context;
 pub mod error;
+pub mod macros;
 pub mod model;
 pub mod tmux;
 
@@ -14,4 +15,4 @@ pub use attach::{plan_attach, AttachPlan};
 pub use context::{detect, Location, TmuxContext};
 pub use error::{Error, Result};
 pub use model::{Pane, Session, Window};
-pub use tmux::Tmux;
+pub use tmux::{ResizeDir, Tmux};

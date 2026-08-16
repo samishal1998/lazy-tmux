@@ -13,7 +13,14 @@ use lazytmux_core::{Tmux, TmuxContext};
 
 use args::{Cli, Cmd, PanesCmd, SessionsCmd, WindowsCmd};
 
+
+
 fn main() {
+    // Rust ignores SIGPIPE by default, which turns `ltm ... | head` into a
+    // panic on a closed pipe. Restore the default: die quietly instead.
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
     let cli = Cli::parse();
     if let Err(err) = run(cli) {
         if matches!(
@@ -56,7 +63,12 @@ fn run(cli: Cli) -> Result<()> {
             SessionsCmd::Rename { from, to } => {
                 commands::sessions::rename(&tmux, &ctx, from, to)
             }
+            SessionsCmd::Detach { name } => commands::sessions::detach(&tmux, name),
         },
+        Some(Cmd::KillServer { yes }) => commands::sessions::kill_server(&tmux, yes),
+        Some(Cmd::Options { cmd }) => commands::options::dispatch(&tmux, &ctx, cmd),
+        Some(Cmd::Macros { cmd }) => commands::macros::dispatch(&tmux, &ctx, cmd),
+        Some(Cmd::Doctor { fix, conf }) => commands::doctor::run(&tmux, fix, conf),
         Some(Cmd::Windows { session, cmd }) => match cmd.unwrap_or(WindowsCmd::List) {
             WindowsCmd::List => commands::windows::list(&tmux, &ctx, session),
             WindowsCmd::New { name, dir } => {
@@ -71,6 +83,13 @@ fn run(cli: Cli) -> Result<()> {
             WindowsCmd::Select { target } => {
                 commands::windows::select(&tmux, &ctx, session, target)
             }
+            WindowsCmd::Swap { a, b } => commands::windows::swap(&tmux, &ctx, session, a, b),
+            WindowsCmd::Move { target, to } => {
+                commands::windows::move_to_session(&tmux, &ctx, session, target, to)
+            }
+            WindowsCmd::Layout { target } => {
+                commands::windows::layout(&tmux, &ctx, session, target)
+            }
         },
         Some(Cmd::Panes {
             session,
@@ -83,6 +102,37 @@ fn run(cli: Cli) -> Result<()> {
             }
             PanesCmd::Kill { target, yes } => {
                 commands::panes::kill(&tmux, &ctx, session, window, target, yes)
+            }
+            PanesCmd::Resize {
+                direction,
+                amount,
+                pane,
+            } => commands::panes::resize(
+                &tmux,
+                &ctx,
+                session,
+                window,
+                pane,
+                direction.into(),
+                amount,
+            ),
+            PanesCmd::Zoom { target } => {
+                commands::panes::zoom(&tmux, &ctx, session, window, target)
+            }
+            PanesCmd::Swap { a, b } => {
+                commands::panes::swap(&tmux, &ctx, session, window, a, b)
+            }
+            PanesCmd::Rename { target, title } => {
+                commands::panes::rename(&tmux, &ctx, session, window, target, title)
+            }
+            PanesCmd::Break { target } => {
+                commands::panes::break_out(&tmux, &ctx, session, window, target)
+            }
+            PanesCmd::Select { target } => {
+                commands::panes::select(&tmux, &ctx, session, window, target)
+            }
+            PanesCmd::Join { target, to, right } => {
+                commands::panes::join(&tmux, &ctx, session, window, target, to, right)
             }
         },
     }

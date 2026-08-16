@@ -129,6 +129,90 @@ pub fn rename(
     Ok(())
 }
 
+pub fn active_window(tmux: &Tmux, session: &Session) -> Result<Window> {
+    tmux.list_windows(&session.id)?
+        .into_iter()
+        .find(|w| w.active)
+        .ok_or_else(|| anyhow!("session '{}' has no windows", session.name))
+}
+
+pub fn swap(
+    tmux: &Tmux,
+    ctx: &TmuxContext,
+    session_flag: Option<String>,
+    a: Option<String>,
+    b: Option<String>,
+) -> Result<()> {
+    let session = resolve_session(tmux, ctx, session_flag, "Swap windows in:")?;
+    let first = resolve_window(tmux, &session, a, "Swap window:")?;
+    let second = resolve_window(tmux, &session, b, "...with window:")?;
+    if first.id == second.id {
+        println!("that's the same window");
+        return Ok(());
+    }
+    tmux.swap_windows(&first.id, &second.id)?;
+    println!(
+        "swapped windows '{}: {}' and '{}: {}'",
+        first.index, first.name, second.index, second.name
+    );
+    Ok(())
+}
+
+pub fn move_to_session(
+    tmux: &Tmux,
+    ctx: &TmuxContext,
+    session_flag: Option<String>,
+    target: Option<String>,
+    to: Option<String>,
+) -> Result<()> {
+    let session = resolve_session(tmux, ctx, session_flag, "Move a window from:")?;
+    let window = resolve_window(tmux, &session, target, "Move window:")?;
+    let dest = match to {
+        Some(name) => sessions::resolve(tmux, &name)?,
+        None => {
+            let others: Vec<_> = tmux
+                .list_sessions()?
+                .into_iter()
+                .filter(|s| s.id != session.id)
+                .collect();
+            if others.is_empty() {
+                return Err(anyhow!(
+                    "no other session to move to (use `ltm windows swap` to reorder)"
+                ));
+            }
+            interactive::pick_from(others, "Move to session:")?
+        }
+    };
+    if dest.id == session.id {
+        return Err(anyhow!(
+            "'{}' is the same session (use `ltm windows swap` to reorder)",
+            dest.name
+        ));
+    }
+    tmux.move_window_to_session(&window.id, &dest.id)?;
+    println!(
+        "moved window '{}: {}' to session '{}'",
+        window.index, window.name, dest.name
+    );
+    Ok(())
+}
+
+pub fn layout(
+    tmux: &Tmux,
+    ctx: &TmuxContext,
+    session_flag: Option<String>,
+    target: Option<String>,
+) -> Result<()> {
+    let session = resolve_session(tmux, ctx, session_flag, "Cycle layout in:")?;
+    let window = match target {
+        Some(t) => resolve_window(tmux, &session, Some(t), "")?,
+        None => active_window(tmux, &session)?,
+    };
+    tmux.next_layout(&target_of(&session, &window))?;
+    println!("cycled layout of window '{}: {}'", window.index, window.name);
+    Ok(())
+}
+
 pub fn select(
     tmux: &Tmux,
     ctx: &TmuxContext,

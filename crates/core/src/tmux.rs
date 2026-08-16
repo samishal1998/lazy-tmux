@@ -11,6 +11,25 @@ use std::process::Command;
 use crate::error::{Error, Result};
 use crate::model::{GlobalPane, Pane, Session, Window};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResizeDir {
+    Up,
+    Down,
+    Left,
+    Right,
+}
+
+impl ResizeDir {
+    fn flag(self) -> &'static str {
+        match self {
+            ResizeDir::Up => "-U",
+            ResizeDir::Down => "-D",
+            ResizeDir::Left => "-L",
+            ResizeDir::Right => "-R",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct Tmux {
     socket: Option<PathBuf>,
@@ -226,5 +245,139 @@ impl Tmux {
 
     pub fn kill_pane(&self, target: &str) -> Result<()> {
         self.run(["kill-pane", "-t", target]).map(|_| ())
+    }
+
+    pub fn resize_pane(&self, target: &str, dir: ResizeDir, amount: u16) -> Result<()> {
+        self.run(["resize-pane", dir.flag(), "-t", target, &amount.to_string()])
+            .map(|_| ())
+    }
+
+    /// Toggle zoom for a pane.
+    pub fn zoom_pane(&self, target: &str) -> Result<()> {
+        self.run(["resize-pane", "-Z", "-t", target]).map(|_| ())
+    }
+
+    pub fn swap_panes(&self, a: &str, b: &str) -> Result<()> {
+        self.run(["swap-pane", "-d", "-s", a, "-t", b]).map(|_| ())
+    }
+
+    /// Swap a pane with the previous (`up = true`) or next one in the window.
+    pub fn swap_pane_step(&self, target: &str, up: bool) -> Result<()> {
+        let dir = if up { "-U" } else { "-D" };
+        self.run(["swap-pane", "-d", dir, "-t", target]).map(|_| ())
+    }
+
+    /// Set a pane's title (shown in borders / `#{pane_title}`).
+    pub fn set_pane_title(&self, target: &str, title: &str) -> Result<()> {
+        self.run(["select-pane", "-t", target, "-T", title]).map(|_| ())
+    }
+
+    /// Break a pane out into its own window (stays in the background).
+    pub fn break_pane(&self, target: &str) -> Result<()> {
+        self.run(["break-pane", "-d", "-s", target]).map(|_| ())
+    }
+
+    /// Join a pane into a target window/pane as a new split.
+    pub fn join_pane(&self, src: &str, dst: &str, right: bool) -> Result<()> {
+        let dir = if right { "-h" } else { "-v" };
+        self.run(["join-pane", dir, "-d", "-s", src, "-t", dst])
+            .map(|_| ())
+    }
+
+    /// Cycle the window to the next preset layout.
+    pub fn next_layout(&self, window: &str) -> Result<()> {
+        self.run(["next-layout", "-t", window]).map(|_| ())
+    }
+
+    pub fn swap_windows(&self, a: &str, b: &str) -> Result<()> {
+        self.run(["swap-window", "-d", "-s", a, "-t", b]).map(|_| ())
+    }
+
+    /// Move a window to another session, appending after its last window.
+    pub fn move_window_to_session(&self, window: &str, session: &str) -> Result<()> {
+        let next_index = self
+            .list_windows(session)?
+            .iter()
+            .map(|w| w.index)
+            .max()
+            .map_or(0, |i| i + 1);
+        self.run([
+            "move-window",
+            "-d",
+            "-s",
+            window,
+            "-t",
+            &format!("{session}:{next_index}"),
+        ])
+        .map(|_| ())
+    }
+
+    /// Detach every client attached to a session.
+    pub fn detach_clients(&self, session: &str) -> Result<()> {
+        self.run(["detach-client", "-s", session]).map(|_| ())
+    }
+
+    /// Kill the whole server (all sessions).
+    pub fn kill_server(&self) -> Result<()> {
+        self.run(["kill-server"]).map(|_| ())
+    }
+
+    // ---- options ----------------------------------------------------------
+
+    pub fn set_global_option(&self, name: &str, value: &str) -> Result<()> {
+        self.run(["set-option", "-g", name, value]).map(|_| ())
+    }
+
+    /// Read a server option (`-s`), e.g. escape-time or extended-keys.
+    /// Array options come back as one value per line.
+    pub fn show_server_option(&self, name: &str) -> Result<String> {
+        Ok(self
+            .run(["show-options", "-s", "-v", name])?
+            .trim()
+            .to_string())
+    }
+
+    pub fn set_server_option(&self, name: &str, value: &str) -> Result<()> {
+        self.run(["set-option", "-s", name, value]).map(|_| ())
+    }
+
+    /// Append to a server array option (e.g. terminal-features).
+    pub fn append_server_option(&self, name: &str, value: &str) -> Result<()> {
+        self.run(["set-option", "-s", "-a", name, value]).map(|_| ())
+    }
+
+    pub fn show_global_option(&self, name: &str) -> Result<String> {
+        Ok(self
+            .run(["show-options", "-g", "-v", name])?
+            .trim()
+            .to_string())
+    }
+
+    pub fn global_flag(&self, name: &str) -> Result<bool> {
+        Ok(self.show_global_option(name)? == "on")
+    }
+
+    /// Toggle an on/off global option (tmux toggles when no value is given)
+    /// and return the new state.
+    pub fn toggle_global_flag(&self, name: &str) -> Result<bool> {
+        self.run(["set-option", "-g", name])?;
+        self.global_flag(name)
+    }
+
+    pub fn set_window_option(&self, window: &str, name: &str, value: &str) -> Result<()> {
+        self.run(["set-option", "-w", "-t", window, name, value])
+            .map(|_| ())
+    }
+
+    pub fn window_flag(&self, window: &str, name: &str) -> Result<bool> {
+        Ok(self
+            .run(["show-options", "-w", "-t", window, "-v", name])?
+            .trim()
+            == "on")
+    }
+
+    pub fn toggle_window_flag(&self, window: &str, name: &str) -> Result<bool> {
+        self.run(["set-option", "-w", "-t", window, name])?;
+        self.window_flag(window, name)
     }
 }

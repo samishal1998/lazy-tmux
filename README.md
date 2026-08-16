@@ -31,10 +31,14 @@ aliases: `ltm s ls`, `ltm w n`, `ltm a`).
 
 | Command | Verbs |
 |---|---|
-| `ltm sessions` (`s`) | `list`, `new [name] [-c dir] [--detach]`, `attach [name]`, `kill [name] [--yes]`, `rename [from] [to]` |
-| `ltm windows` (`w`) `[-s session]` | `list`, `new [name] [-c dir]`, `kill [index\|name]`, `rename [target] [to]`, `select [target]` |
-| `ltm panes` (`p`) `[-s session] [-w window]` | `list`, `split [index] [--right]`, `kill [index]` |
+| `ltm sessions` (`s`) | `list`, `new [name] [-c dir] [--detach]`, `attach [name]`, `kill [name] [--yes]`, `rename [from] [to]`, `detach [name]` |
+| `ltm windows` (`w`) `[-s session]` | `list`, `new [name] [-c dir]`, `kill [target]`, `rename [target] [to]`, `select [target]`, `swap [a] [b]`, `move [target] [--to session]`, `layout [target]` |
+| `ltm panes` (`p`) `[-s session] [-w window]` | `list`, `split [--right]`, `kill [index]`, `resize <up\|down\|left\|right> [n]`, `zoom [index]`, `swap [a] [b]`, `rename [index] [title]`, `break [index]`, `select [index]`, `join [index] [--to window] [--right]` |
+| `ltm options` (`o`) | `list`, `mouse [on\|off]`, `status [on\|off]`, `sync [on\|off]`, `get <name>`, `set <name> <value> [--window]` — no value toggles |
+| `ltm macros` (`m`) | `list`, `run [name]`, `show [name]`, `edit` — user-defined tmux command sequences |
+| `ltm doctor` | check common paper-cuts; `--fix` applies live, `--conf` prints a ~/.tmux.conf snippet |
 | `ltm attach` (`a`) | shortcut for `sessions attach` |
+| `ltm kill-server` | kill the server and every session (with confirm) |
 | `ltm context` (`ctx`) | where am I relative to tmux, with the annotated process ancestry |
 | `ltm interactive` (`i`) | guided menu mode — no commands to remember, Esc goes back a level |
 | `ltm completions <shell>` | generate shell completions (bash, zsh, fish, elvish, powershell) |
@@ -106,8 +110,52 @@ Stacked Sessions / Windows / Panes panels on the left (lazygit-style), a
 context header and live pane preview on the right, refreshed every 2s.
 
 Keys: `j/k` move · `tab`/`h/l` or `1/2/3` switch panel · `enter` attach or
-switch to the selection · `n` new · `r` rename · `d` kill (with confirm) ·
-`s`/`v` split pane below/right · `R` refresh · `?` help · `q` quit.
+switch to the selection · `n` new · `r` rename (session / window / pane
+title) · `d` kill (with confirm) · `D` detach clients · `s`/`v` split pane
+below/right · `z` zoom · `H/J/K/L` resize pane · `[`/`]` swap pane or
+window with its neighbour · `b` break pane into a window · `m` move window
+to another session · `o` cycle window layout · `M` toggle mouse · `R`
+refresh · `?` help · `q` quit.
+
+## Macros
+
+Named tmux command sequences, defined in
+`~/.config/lazy-tmux/macros.toml` (override with `$LAZY_TMUX_MACROS`).
+`ltm macros edit` creates a starter file and opens `$EDITOR`.
+
+```toml
+[macros.dev]
+description = "Editor + server layout"
+steps = [
+  "new-session -d -s dev -c ~/projects/app",
+  "rename-window -t dev: editor",
+  "send-keys -t dev: 'nvim .' Enter",
+  "split-window -h -t dev:",
+  "new-window -t dev -n server",
+  "send-keys -t dev:server 'npm run dev' Enter",
+]
+attach = "dev"   # optional: attach/switch there afterwards
+```
+
+Steps are tmux commands without the `tmux` prefix, split shell-style (so
+quoted arguments work) with `~/` expanded. `ltm macros run` with no name
+gives a picker; a failing step aborts and reports which step and why.
+
+## Doctor
+
+`ltm doctor` checks the running server for the classic paper-cuts and says
+why each one matters:
+
+- **extended-keys** + **terminal-features extkeys** — without these,
+  Shift-Enter / Ctrl-Enter never reach apps like Claude Code
+- **true color** (`terminal-features RGB`), **default-terminal** — washed
+  out colors, broken keys/italics
+- **escape-time** — the 500ms default Esc delay that makes vim feel laggy
+- **focus-events**, **set-clipboard** (OSC 52), **allow-passthrough**,
+  **history-limit**, and **mouse** (flagged but never auto-applied — taste)
+
+`ltm doctor --fix` applies the recommendations to the running server;
+`ltm doctor --conf >> ~/.tmux.conf` makes them permanent.
 
 ## Context detection
 

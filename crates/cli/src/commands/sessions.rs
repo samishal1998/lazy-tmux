@@ -111,6 +111,39 @@ pub fn kill(tmux: &Tmux, name: Option<String>, yes: bool) -> Result<()> {
     Ok(())
 }
 
+pub fn detach(tmux: &Tmux, name: Option<String>) -> Result<()> {
+    let session = match name {
+        Some(n) => resolve(tmux, &n)?,
+        None => interactive::pick_session(tmux, "Detach clients from:")?,
+    };
+    if !session.is_attached() {
+        println!("session '{}' has no attached clients", session.name);
+        return Ok(());
+    }
+    tmux.detach_clients(&session.id)?;
+    println!("detached {} client(s) from '{}'", session.attached, session.name);
+    Ok(())
+}
+
+pub fn kill_server(tmux: &Tmux, yes: bool) -> Result<()> {
+    let count = tmux.list_sessions()?.len();
+    if count == 0 {
+        println!("no server running");
+        return Ok(());
+    }
+    if !yes
+        && !interactive::confirm(&format!(
+            "Kill the tmux server and ALL {count} session(s)?"
+        ))?
+    {
+        println!("aborted");
+        return Ok(());
+    }
+    tmux.kill_server()?;
+    println!("killed the tmux server ({count} session(s))");
+    Ok(())
+}
+
 pub fn rename(
     tmux: &Tmux,
     ctx: &TmuxContext,

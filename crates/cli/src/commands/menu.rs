@@ -6,7 +6,8 @@ use anyhow::Result;
 use inquire::{InquireError, Select};
 use lazytmux_core::{Tmux, TmuxContext};
 
-use crate::commands::{context, panes, sessions, windows};
+use crate::args::MacrosCmd;
+use crate::commands::{context, doctor, macros, options, panes, sessions, windows};
 
 pub fn run(tmux: &Tmux, ctx: &TmuxContext) -> Result<()> {
     println!("{}", ctx.describe());
@@ -16,9 +17,12 @@ pub fn run(tmux: &Tmux, ctx: &TmuxContext) -> Result<()> {
             &[
                 "attach to a session",
                 "new session",
+                "run a macro",
                 "sessions ...",
                 "windows ...",
                 "panes ...",
+                "toggle mouse",
+                "doctor (check tmux health)",
                 "show context",
                 "quit",
             ],
@@ -37,9 +41,16 @@ pub fn run(tmux: &Tmux, ctx: &TmuxContext) -> Result<()> {
                 Ok(()) => return Ok(()),
                 Err(e) => Err(e),
             },
+            "run a macro" => macros::dispatch(tmux, ctx, Some(MacrosCmd::Run { name: None })),
             "sessions ..." => sessions_menu(tmux, ctx),
             "windows ..." => windows_menu(tmux, ctx),
             "panes ..." => panes_menu(tmux, ctx),
+            "toggle mouse" => options::dispatch(
+                tmux,
+                ctx,
+                Some(crate::args::OptionsCmd::Mouse { state: None }),
+            ),
+            "doctor (check tmux health)" => doctor::run(tmux, false, false),
             "show context" => context::show(ctx),
             _ => return Ok(()),
         };
@@ -56,7 +67,7 @@ fn sessions_menu(tmux: &Tmux, ctx: &TmuxContext) -> Result<()> {
     loop {
         let Some(choice) = menu(
             "Sessions:",
-            &["list", "new", "attach", "rename", "kill", "back"],
+            &["list", "new", "attach", "rename", "detach", "kill", "back"],
         )?
         else {
             return Ok(());
@@ -66,6 +77,7 @@ fn sessions_menu(tmux: &Tmux, ctx: &TmuxContext) -> Result<()> {
             "new" => return sessions::new(tmux, ctx, None, None, false),
             "attach" => return sessions::attach(tmux, ctx, None),
             "rename" => sessions::rename(tmux, ctx, None, None)?,
+            "detach" => sessions::detach(tmux, None)?,
             "kill" => sessions::kill(tmux, None, false)?,
             _ => return Ok(()),
         }
@@ -76,7 +88,9 @@ fn windows_menu(tmux: &Tmux, ctx: &TmuxContext) -> Result<()> {
     loop {
         let Some(choice) = menu(
             "Windows:",
-            &["list", "new", "rename", "select", "kill", "back"],
+            &[
+                "list", "new", "rename", "select", "swap", "move", "layout", "kill", "back",
+            ],
         )?
         else {
             return Ok(());
@@ -86,6 +100,9 @@ fn windows_menu(tmux: &Tmux, ctx: &TmuxContext) -> Result<()> {
             "new" => windows::new(tmux, ctx, None, None, None)?,
             "rename" => windows::rename(tmux, ctx, None, None, None)?,
             "select" => windows::select(tmux, ctx, None, None)?,
+            "swap" => windows::swap(tmux, ctx, None, None, None)?,
+            "move" => windows::move_to_session(tmux, ctx, None, None, None)?,
+            "layout" => windows::layout(tmux, ctx, None, None)?,
             "kill" => windows::kill(tmux, ctx, None, None, false)?,
             _ => return Ok(()),
         }
@@ -96,7 +113,18 @@ fn panes_menu(tmux: &Tmux, ctx: &TmuxContext) -> Result<()> {
     loop {
         let Some(choice) = menu(
             "Panes:",
-            &["list", "split below", "split right", "kill", "back"],
+            &[
+                "list",
+                "split below",
+                "split right",
+                "zoom",
+                "rename (title)",
+                "swap",
+                "break out",
+                "join into window",
+                "kill",
+                "back",
+            ],
         )?
         else {
             return Ok(());
@@ -105,6 +133,11 @@ fn panes_menu(tmux: &Tmux, ctx: &TmuxContext) -> Result<()> {
             "list" => panes::list(tmux, ctx, None, None)?,
             "split below" => panes::split(tmux, ctx, None, None, None, false)?,
             "split right" => panes::split(tmux, ctx, None, None, None, true)?,
+            "zoom" => panes::zoom(tmux, ctx, None, None, None)?,
+            "rename (title)" => panes::rename(tmux, ctx, None, None, None, None)?,
+            "swap" => panes::swap(tmux, ctx, None, None, None, None)?,
+            "break out" => panes::break_out(tmux, ctx, None, None, None)?,
+            "join into window" => panes::join(tmux, ctx, None, None, None, None, false)?,
             "kill" => panes::kill(tmux, ctx, None, None, None, false)?,
             _ => return Ok(()),
         }

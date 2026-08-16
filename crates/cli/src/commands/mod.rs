@@ -1,5 +1,8 @@
 pub mod context;
+pub mod doctor;
+pub mod macros;
 pub mod menu;
+pub mod options;
 pub mod panes;
 pub mod sessions;
 pub mod windows;

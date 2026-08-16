@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use lazytmux_core::{Pane, Session, Tmux, TmuxContext, Window};
+use lazytmux_core::{Pane, ResizeDir, Session, Tmux, TmuxContext, Window};
 
 use crate::commands::windows;
 use crate::{interactive, output};
@@ -91,6 +91,144 @@ pub fn split(
         "split pane {} {}",
         pane.id,
         if right { "to the right" } else { "below" }
+    );
+    Ok(())
+}
+
+fn active_pane(tmux: &Tmux, session: &Session, window: &Window) -> Result<Pane> {
+    tmux.list_panes(&windows::target_of(session, window))?
+        .into_iter()
+        .find(|p| p.active)
+        .ok_or_else(|| anyhow!("window has no panes"))
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn resize(
+    tmux: &Tmux,
+    ctx: &TmuxContext,
+    session_flag: Option<String>,
+    window_flag: Option<String>,
+    pane: Option<String>,
+    dir: ResizeDir,
+    amount: u16,
+) -> Result<()> {
+    let (session, window) = resolve_scope(tmux, ctx, session_flag, window_flag)?;
+    let pane = match pane {
+        Some(t) => resolve_pane(tmux, &session, &window, Some(t), "")?,
+        None => active_pane(tmux, &session, &window)?,
+    };
+    tmux.resize_pane(&pane.id, dir, amount)?;
+    println!("resized pane {} by {amount}", pane.id);
+    Ok(())
+}
+
+pub fn zoom(
+    tmux: &Tmux,
+    ctx: &TmuxContext,
+    session_flag: Option<String>,
+    window_flag: Option<String>,
+    target: Option<String>,
+) -> Result<()> {
+    let (session, window) = resolve_scope(tmux, ctx, session_flag, window_flag)?;
+    let pane = match target {
+        Some(t) => resolve_pane(tmux, &session, &window, Some(t), "")?,
+        None => active_pane(tmux, &session, &window)?,
+    };
+    tmux.zoom_pane(&pane.id)?;
+    println!("toggled zoom on pane {}", pane.id);
+    Ok(())
+}
+
+pub fn swap(
+    tmux: &Tmux,
+    ctx: &TmuxContext,
+    session_flag: Option<String>,
+    window_flag: Option<String>,
+    a: Option<String>,
+    b: Option<String>,
+) -> Result<()> {
+    let (session, window) = resolve_scope(tmux, ctx, session_flag, window_flag)?;
+    let first = resolve_pane(tmux, &session, &window, a, "Swap pane:")?;
+    let second = resolve_pane(tmux, &session, &window, b, "...with pane:")?;
+    if first.id == second.id {
+        println!("that's the same pane");
+        return Ok(());
+    }
+    tmux.swap_panes(&first.id, &second.id)?;
+    println!("swapped panes {} and {}", first.id, second.id);
+    Ok(())
+}
+
+pub fn rename(
+    tmux: &Tmux,
+    ctx: &TmuxContext,
+    session_flag: Option<String>,
+    window_flag: Option<String>,
+    target: Option<String>,
+    title: Option<String>,
+) -> Result<()> {
+    let (session, window) = resolve_scope(tmux, ctx, session_flag, window_flag)?;
+    let pane = resolve_pane(tmux, &session, &window, target, "Rename pane:")?;
+    let title = match title {
+        Some(t) => t,
+        None => interactive::required_name(
+            &format!("New title for pane {}:", pane.id),
+            "the new title",
+        )?,
+    };
+    tmux.set_pane_title(&pane.id, &title)?;
+    println!("set title of pane {} to '{title}'", pane.id);
+    Ok(())
+}
+
+pub fn break_out(
+    tmux: &Tmux,
+    ctx: &TmuxContext,
+    session_flag: Option<String>,
+    window_flag: Option<String>,
+    target: Option<String>,
+) -> Result<()> {
+    let (session, window) = resolve_scope(tmux, ctx, session_flag, window_flag)?;
+    let pane = resolve_pane(tmux, &session, &window, target, "Break out pane:")?;
+    tmux.break_pane(&pane.id)?;
+    println!("broke pane {} out into its own window", pane.id);
+    Ok(())
+}
+
+pub fn select(
+    tmux: &Tmux,
+    ctx: &TmuxContext,
+    session_flag: Option<String>,
+    window_flag: Option<String>,
+    target: Option<String>,
+) -> Result<()> {
+    let (session, window) = resolve_scope(tmux, ctx, session_flag, window_flag)?;
+    let pane = resolve_pane(tmux, &session, &window, target, "Select pane:")?;
+    tmux.select_pane(&pane.id)?;
+    println!("selected pane {} ({})", pane.id, pane.command);
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn join(
+    tmux: &Tmux,
+    ctx: &TmuxContext,
+    session_flag: Option<String>,
+    window_flag: Option<String>,
+    target: Option<String>,
+    to: Option<String>,
+    right: bool,
+) -> Result<()> {
+    let (session, window) = resolve_scope(tmux, ctx, session_flag, window_flag)?;
+    let pane = resolve_pane(tmux, &session, &window, target, "Join pane:")?;
+    let dest = windows::resolve_window(tmux, &session, to, "...into window:")?;
+    if dest.id == window.id {
+        return Err(anyhow!("pane {} is already in that window", pane.id));
+    }
+    tmux.join_pane(&pane.id, &windows::target_of(&session, &dest), right)?;
+    println!(
+        "joined pane {} into window '{}: {}'",
+        pane.id, dest.index, dest.name
     );
     Ok(())
 }

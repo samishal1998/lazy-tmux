@@ -16,3 +16,4 @@ anyhow.workspace = true
 clap = { version = "4", features = ["derive"] }
 inquire = "0.7"
 clap_complete = "4.6.9"
+libc = "0.2.189"

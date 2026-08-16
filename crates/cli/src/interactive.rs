@@ -54,6 +54,16 @@ pub fn pick_session(tmux: &Tmux, prompt: &str) -> Result<Session> {
     Ok(Select::new(prompt, items).prompt()?.0)
 }
 
+/// Pick from a pre-filtered set of sessions.
+pub fn pick_from(sessions: Vec<Session>, prompt: &str) -> Result<Session> {
+    if sessions.len() == 1 {
+        return Ok(sessions.into_iter().next().unwrap());
+    }
+    require_tty("a session name")?;
+    let items: Vec<SessionItem> = sessions.into_iter().map(SessionItem).collect();
+    Ok(Select::new(prompt, items).prompt()?.0)
+}
+
 pub fn pick_window(tmux: &Tmux, session: &Session, prompt: &str) -> Result<Window> {
     let windows = tmux.list_windows(&session.id)?;
     if windows.is_empty() {

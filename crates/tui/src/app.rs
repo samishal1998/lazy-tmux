@@ -2,7 +2,7 @@
 
 use std::time::{Duration, Instant};
 
-use lazytmux_core::{Location, Pane, Session, TmuxContext, Tmux, Window};
+use lazytmux_core::{Location, Pane, ResizeDir, Session, TmuxContext, Tmux, Window};
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::widgets::ListState;
 
@@ -21,6 +21,12 @@ pub enum InputAction {
     RenameSession { id: String },
     NewWindow { session_id: String },
     RenameWindow { id: String },
+    RenamePane { id: String },
+}
+
+#[derive(Debug, Clone)]
+pub enum PickAction {
+    MoveWindow { window_id: String },
 }
 
 #[derive(Debug, Clone)]
@@ -41,6 +47,13 @@ pub enum Modal {
     Confirm {
         text: String,
         action: ConfirmAction,
+    },
+    /// Pick one of `items` (id, label); j/k + enter.
+    Pick {
+        title: String,
+        items: Vec<(String, String)>,
+        selected: usize,
+        action: PickAction,
     },
     Help,
 }
@@ -220,6 +233,18 @@ impl App {
             KeyCode::Char('d') | KeyCode::Char('x') => self.start_kill(),
             KeyCode::Char('s') => self.split(false),
             KeyCode::Char('v') => self.split(true),
+            KeyCode::Char('z') => self.zoom(),
+            KeyCode::Char('[') => self.swap_step(true),
+            KeyCode::Char(']') => self.swap_step(false),
+            KeyCode::Char('o') => self.cycle_layout(),
+            KeyCode::Char('b') => self.break_pane_out(),
+            KeyCode::Char('m') => self.start_move_window(),
+            KeyCode::Char('D') => self.detach_session(),
+            KeyCode::Char('M') => self.toggle_mouse(),
+            KeyCode::Char('H') => self.resize(ResizeDir::Left),
+            KeyCode::Char('J') => self.resize(ResizeDir::Down),
+            KeyCode::Char('K') => self.resize(ResizeDir::Up),
+            KeyCode::Char('L') => self.resize(ResizeDir::Right),
             _ => {}
         }
     }
@@ -334,7 +359,7 @@ impl App {
                     },
                 });
             }
-            Focus::Windows | Focus::Panes => {
+            Focus::Windows => {
                 let Some(window) = self.selected_window() else {
                     return;
                 };
@@ -343,6 +368,18 @@ impl App {
                     buffer: window.name.clone(),
                     action: InputAction::RenameWindow {
                         id: window.id.clone(),
+                    },
+                });
+            }
+            Focus::Panes => {
+                let Some(pane) = self.selected_pane() else {
+                    return;
+                };
+                self.modal = Some(Modal::Input {
+                    title: format!("Title for pane {}", pane.id),
+                    buffer: pane.title.clone(),
+                    action: InputAction::RenamePane {
+                        id: pane.id.clone(),
                     },
                 });
             }
@@ -389,6 +426,172 @@ impl App {
                     },
                 });
             }
+        }
+    }
+
+    fn zoom(&mut self) {
+        if self.focus != Focus::Panes {
+            return;
+        }
+        let Some(pane) = self.selected_pane() else {
+            return;
+        };
+        let id = pane.id.clone();
+        match self.tmux.zoom_pane(&id) {
+            Ok(()) => {
+                self.report(format!("toggled zoom on {id}"));
+                self.refresh_panes();
+            }
+            Err(e) => self.report(format!("zoom failed: {e}")),
+        }
+    }
+
+    fn resize(&mut self, dir: ResizeDir) {
+        if self.focus != Focus::Panes {
+            return;
+        }
+        let Some(pane) = self.selected_pane() else {
+            return;
+        };
+        let id = pane.id.clone();
+        if let Err(e) = self.tmux.resize_pane(&id, dir, 3) {
+            self.report(format!("resize failed: {e}"));
+        } else {
+            self.refresh_panes();
+        }
+    }
+
+    fn swap_step(&mut self, up: bool) {
+        match self.focus {
+            Focus::Sessions => {
+                self.report("sessions are sorted by tmux; nothing to reorder");
+            }
+            Focus::Windows => {
+                let Some(i) = self.windows_state.selected() else {
+                    return;
+                };
+                let Some(j) = (if up { i.checked_sub(1) } else { Some(i + 1) })
+                    .filter(|j| *j < self.windows.len())
+                else {
+                    self.report(if up { "already first" } else { "already last" });
+                    return;
+                };
+                let (a, b) = (self.windows[i].id.clone(), self.windows[j].id.clone());
+                match self.tmux.swap_windows(&a, &b) {
+                    Ok(()) => {
+                        self.windows_state.select(Some(j));
+                        self.refresh_windows();
+                        self.report("swapped windows");
+                    }
+                    Err(e) => self.report(format!("swap failed: {e}")),
+                }
+            }
+            Focus::Panes => {
+                let Some(pane) = self.selected_pane() else {
+                    return;
+                };
+                let id = pane.id.clone();
+                match self.tmux.swap_pane_step(&id, up) {
+                    Ok(()) => {
+                        let i = self.panes_state.selected().unwrap_or(0);
+                        let j = if up {
+                            i.saturating_sub(1)
+                        } else {
+                            (i + 1).min(self.panes.len().saturating_sub(1))
+                        };
+                        self.panes_state.select(Some(j));
+                        self.refresh_panes();
+                        self.report("swapped panes");
+                    }
+                    Err(e) => self.report(format!("swap failed: {e}")),
+                }
+            }
+        }
+    }
+
+    fn cycle_layout(&mut self) {
+        let Some(target) = self.window_target() else {
+            return;
+        };
+        match self.tmux.next_layout(&target) {
+            Ok(()) => {
+                self.refresh_panes();
+                self.report("cycled window layout");
+            }
+            Err(e) => self.report(format!("layout failed: {e}")),
+        }
+    }
+
+    fn break_pane_out(&mut self) {
+        if self.focus != Focus::Panes {
+            return;
+        }
+        let Some(pane) = self.selected_pane() else {
+            return;
+        };
+        let id = pane.id.clone();
+        match self.tmux.break_pane(&id) {
+            Ok(()) => {
+                self.refresh_all();
+                self.report(format!("broke {id} out into its own window"));
+            }
+            Err(e) => self.report(format!("break failed: {e}")),
+        }
+    }
+
+    fn start_move_window(&mut self) {
+        if self.focus != Focus::Windows {
+            return;
+        }
+        let (Some(session), Some(window)) = (self.selected_session(), self.selected_window())
+        else {
+            return;
+        };
+        let items: Vec<(String, String)> = self
+            .sessions
+            .iter()
+            .filter(|s| s.id != session.id)
+            .map(|s| (s.id.clone(), s.name.clone()))
+            .collect();
+        if items.is_empty() {
+            self.report("no other session to move to");
+            return;
+        }
+        self.modal = Some(Modal::Pick {
+            title: format!("Move window '{}' to session", window.name),
+            items,
+            selected: 0,
+            action: PickAction::MoveWindow {
+                window_id: window.id.clone(),
+            },
+        });
+    }
+
+    fn detach_session(&mut self) {
+        if self.focus != Focus::Sessions {
+            return;
+        }
+        let Some(session) = self.selected_session() else {
+            return;
+        };
+        if !session.is_attached() {
+            self.report(format!("'{}' has no attached clients", session.name));
+            return;
+        }
+        let (id, name) = (session.id.clone(), session.name.clone());
+        match self.tmux.detach_clients(&id) {
+            Ok(()) => {
+                self.refresh_all();
+                self.report(format!("detached clients from '{name}'"));
+            }
+            Err(e) => self.report(format!("detach failed: {e}")),
+        }
+    }
+
+    fn toggle_mouse(&mut self) {
+        match self.tmux.toggle_global_flag("mouse") {
+            Ok(on) => self.report(format!("mouse: {}", if on { "on" } else { "off" })),
+            Err(e) => self.report(format!("mouse toggle failed: {e}")),
         }
     }
 
@@ -454,7 +657,49 @@ impl App {
                 KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {}
                 _ => self.modal = Some(Modal::Confirm { text, action }),
             },
+            Modal::Pick {
+                title,
+                items,
+                mut selected,
+                action,
+            } => match key.code {
+                KeyCode::Esc => {}
+                KeyCode::Enter => {
+                    let target_id = items[selected].0.clone();
+                    self.commit_pick(&action, &target_id);
+                }
+                code => {
+                    match code {
+                        KeyCode::Char('j') | KeyCode::Down => {
+                            selected = (selected + 1) % items.len();
+                        }
+                        KeyCode::Char('k') | KeyCode::Up => {
+                            selected = selected.checked_sub(1).unwrap_or(items.len() - 1);
+                        }
+                        _ => {}
+                    }
+                    self.modal = Some(Modal::Pick {
+                        title,
+                        items,
+                        selected,
+                        action,
+                    });
+                }
+            },
         }
+    }
+
+    fn commit_pick(&mut self, action: &PickAction, target_id: &str) {
+        let result = match action {
+            PickAction::MoveWindow { window_id } => {
+                self.tmux.move_window_to_session(window_id, target_id)
+            }
+        };
+        match result {
+            Ok(()) => self.report("moved window"),
+            Err(e) => self.report(format!("error: {e}")),
+        }
+        self.refresh_all();
     }
 
     fn commit_input(&mut self, action: &InputAction, value: &str) {
@@ -474,6 +719,10 @@ impl App {
             },
             InputAction::RenameWindow { id } => match name {
                 Some(name) => self.tmux.rename_window(id, name),
+                None => Ok(()),
+            },
+            InputAction::RenamePane { id } => match name {
+                Some(title) => self.tmux.set_pane_title(id, title),
                 None => Ok(()),
             },
         };
