@@ -1,0 +1,488 @@
+//! Application state and update logic (no drawing here).
+
+use std::time::{Duration, Instant};
+
+use lazytmux_core::{Pane, Session, TmuxContext, Tmux, Window};
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use ratatui::widgets::ListState;
+
+const REFRESH_EVERY: Duration = Duration::from_secs(2);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Focus {
+    Sessions,
+    Windows,
+    Panes,
+}
+
+#[derive(Debug, Clone)]
+pub enum InputAction {
+    NewSession,
+    RenameSession { id: String },
+    NewWindow { session_id: String },
+    RenameWindow { id: String },
+}
+
+#[derive(Debug, Clone)]
+#[allow(clippy::enum_variant_names)] // the shared Kill prefix is the point
+pub enum ConfirmAction {
+    KillSession { id: String },
+    KillWindow { id: String },
+    KillPane { id: String },
+}
+
+#[derive(Debug, Clone)]
+pub enum Modal {
+    Input {
+        title: String,
+        buffer: String,
+        action: InputAction,
+    },
+    Confirm {
+        text: String,
+        action: ConfirmAction,
+    },
+    Help,
+}
+
+pub struct App {
+    pub tmux: Tmux,
+    pub ctx: TmuxContext,
+    pub sessions: Vec<Session>,
+    pub windows: Vec<Window>,
+    pub panes: Vec<Pane>,
+    pub preview: String,
+    pub focus: Focus,
+    pub sessions_state: ListState,
+    pub windows_state: ListState,
+    pub panes_state: ListState,
+    pub modal: Option<Modal>,
+    pub status: Option<String>,
+    pub should_quit: bool,
+    /// Session (or session:window) target to attach to after the TUI exits.
+    pub attach_target: Option<String>,
+    last_refresh: Instant,
+}
+
+impl App {
+    pub fn new(tmux: Tmux, ctx: TmuxContext) -> Self {
+        Self {
+            tmux,
+            ctx,
+            sessions: Vec::new(),
+            windows: Vec::new(),
+            panes: Vec::new(),
+            preview: String::new(),
+            focus: Focus::Sessions,
+            sessions_state: ListState::default(),
+            windows_state: ListState::default(),
+            panes_state: ListState::default(),
+            modal: None,
+            status: None,
+            should_quit: false,
+            attach_target: None,
+            last_refresh: Instant::now(),
+        }
+    }
+
+    // ---- selection helpers ------------------------------------------------
+
+    pub fn selected_session(&self) -> Option<&Session> {
+        self.sessions.get(self.sessions_state.selected()?)
+    }
+
+    pub fn selected_window(&self) -> Option<&Window> {
+        self.windows.get(self.windows_state.selected()?)
+    }
+
+    pub fn selected_pane(&self) -> Option<&Pane> {
+        self.panes.get(self.panes_state.selected()?)
+    }
+
+    /// tmux target for the selected window: `$id:index`.
+    fn window_target(&self) -> Option<String> {
+        let session = self.selected_session()?;
+        let window = self.selected_window()?;
+        Some(format!("{}:{}", session.id, window.index))
+    }
+
+    // ---- data loading -----------------------------------------------------
+
+    pub fn refresh_all(&mut self) {
+        self.last_refresh = Instant::now();
+        match self.tmux.list_sessions() {
+            Ok(sessions) => self.sessions = sessions,
+            Err(e) => {
+                self.sessions.clear();
+                self.report(format!("error: {e}"));
+            }
+        }
+        clamp(&mut self.sessions_state, self.sessions.len());
+        // Keep the current session selected on first load.
+        if self.sessions_state.selected().is_none() && !self.sessions.is_empty() {
+            let current = self
+                .ctx
+                .current_session()
+                .and_then(|(id, _)| self.sessions.iter().position(|s| s.id == id));
+            self.sessions_state.select(Some(current.unwrap_or(0)));
+        }
+        self.refresh_windows();
+    }
+
+    pub fn refresh_windows(&mut self) {
+        self.windows = match self.selected_session() {
+            Some(session) => self.tmux.list_windows(&session.id).unwrap_or_default(),
+            None => Vec::new(),
+        };
+        clamp(&mut self.windows_state, self.windows.len());
+        if self.windows_state.selected().is_none() && !self.windows.is_empty() {
+            let active = self.windows.iter().position(|w| w.active);
+            self.windows_state.select(Some(active.unwrap_or(0)));
+        }
+        self.refresh_panes();
+    }
+
+    pub fn refresh_panes(&mut self) {
+        self.panes = match self.window_target() {
+            Some(target) => self.tmux.list_panes(&target).unwrap_or_default(),
+            None => Vec::new(),
+        };
+        clamp(&mut self.panes_state, self.panes.len());
+        if self.panes_state.selected().is_none() && !self.panes.is_empty() {
+            let active = self.panes.iter().position(|p| p.active);
+            self.panes_state.select(Some(active.unwrap_or(0)));
+        }
+        self.refresh_preview();
+    }
+
+    pub fn refresh_preview(&mut self) {
+        self.preview = match self.selected_pane() {
+            Some(pane) => self.tmux.capture_pane(&pane.id).unwrap_or_default(),
+            None => String::new(),
+        };
+    }
+
+    pub fn on_tick(&mut self) {
+        if self.last_refresh.elapsed() >= REFRESH_EVERY {
+            self.refresh_all();
+        }
+    }
+
+    fn report(&mut self, msg: impl Into<String>) {
+        self.status = Some(msg.into());
+    }
+
+    // ---- input ------------------------------------------------------------
+
+    pub fn on_key(&mut self, key: KeyEvent) {
+        self.status = None;
+        if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
+            self.should_quit = true;
+            return;
+        }
+        if self.modal.is_some() {
+            self.on_modal_key(key);
+            return;
+        }
+        match key.code {
+            KeyCode::Char('q') | KeyCode::Esc => self.should_quit = true,
+            KeyCode::Char('?') => self.modal = Some(Modal::Help),
+            KeyCode::Char('R') => self.refresh_all(),
+            KeyCode::Char('j') | KeyCode::Down => self.move_selection(1),
+            KeyCode::Char('k') | KeyCode::Up => self.move_selection(-1),
+            KeyCode::Char('g') => self.jump_selection(0),
+            KeyCode::Char('G') => self.jump_selection(usize::MAX),
+            KeyCode::Tab | KeyCode::Char('l') | KeyCode::Right => self.cycle_focus(1),
+            KeyCode::BackTab | KeyCode::Char('h') | KeyCode::Left => self.cycle_focus(-1),
+            KeyCode::Char('1') => self.focus = Focus::Sessions,
+            KeyCode::Char('2') => self.focus = Focus::Windows,
+            KeyCode::Char('3') => self.focus = Focus::Panes,
+            KeyCode::Enter => self.attach_selected(),
+            KeyCode::Char('n') => self.start_new(),
+            KeyCode::Char('r') => self.start_rename(),
+            KeyCode::Char('d') | KeyCode::Char('x') => self.start_kill(),
+            KeyCode::Char('s') => self.split(false),
+            KeyCode::Char('v') => self.split(true),
+            _ => {}
+        }
+    }
+
+    fn cycle_focus(&mut self, dir: isize) {
+        let order = [Focus::Sessions, Focus::Windows, Focus::Panes];
+        let i = order.iter().position(|f| *f == self.focus).unwrap_or(0) as isize;
+        let next = (i + dir).rem_euclid(order.len() as isize) as usize;
+        self.focus = order[next];
+    }
+
+    fn move_selection(&mut self, dir: isize) {
+        let (state, len) = match self.focus {
+            Focus::Sessions => (&mut self.sessions_state, self.sessions.len()),
+            Focus::Windows => (&mut self.windows_state, self.windows.len()),
+            Focus::Panes => (&mut self.panes_state, self.panes.len()),
+        };
+        if len == 0 {
+            return;
+        }
+        let cur = state.selected().unwrap_or(0) as isize;
+        let next = (cur + dir).rem_euclid(len as isize) as usize;
+        state.select(Some(next));
+        self.on_selection_change();
+    }
+
+    fn jump_selection(&mut self, index: usize) {
+        let (state, len) = match self.focus {
+            Focus::Sessions => (&mut self.sessions_state, self.sessions.len()),
+            Focus::Windows => (&mut self.windows_state, self.windows.len()),
+            Focus::Panes => (&mut self.panes_state, self.panes.len()),
+        };
+        if len == 0 {
+            return;
+        }
+        state.select(Some(index.min(len - 1)));
+        self.on_selection_change();
+    }
+
+    fn on_selection_change(&mut self) {
+        match self.focus {
+            Focus::Sessions => {
+                self.windows_state.select(None);
+                self.panes_state.select(None);
+                self.refresh_windows();
+            }
+            Focus::Windows => {
+                self.panes_state.select(None);
+                self.refresh_panes();
+            }
+            Focus::Panes => self.refresh_preview(),
+        }
+    }
+
+    // ---- actions ----------------------------------------------------------
+
+    fn attach_selected(&mut self) {
+        let Some(session) = self.selected_session() else {
+            return;
+        };
+        let target = session.id.clone();
+        if matches!(self.focus, Focus::Windows | Focus::Panes) {
+            if let Some(window_target) = self.window_target() {
+                let _ = self.tmux.select_window(&window_target);
+            }
+            if self.focus == Focus::Panes {
+                if let Some(pane) = self.selected_pane() {
+                    let id = pane.id.clone();
+                    let _ = self.tmux.select_pane(&id);
+                }
+            }
+        }
+        self.attach_target = Some(target);
+        self.should_quit = true;
+    }
+
+    fn start_new(&mut self) {
+        match self.focus {
+            Focus::Sessions => {
+                self.modal = Some(Modal::Input {
+                    title: "New session name (empty = default)".into(),
+                    buffer: String::new(),
+                    action: InputAction::NewSession,
+                });
+            }
+            Focus::Windows | Focus::Panes => {
+                let Some(session) = self.selected_session() else {
+                    return;
+                };
+                self.modal = Some(Modal::Input {
+                    title: format!("New window in '{}' (empty = default)", session.name),
+                    buffer: String::new(),
+                    action: InputAction::NewWindow {
+                        session_id: session.id.clone(),
+                    },
+                });
+            }
+        }
+    }
+
+    fn start_rename(&mut self) {
+        match self.focus {
+            Focus::Sessions => {
+                let Some(session) = self.selected_session() else {
+                    return;
+                };
+                self.modal = Some(Modal::Input {
+                    title: format!("Rename session '{}'", session.name),
+                    buffer: session.name.clone(),
+                    action: InputAction::RenameSession {
+                        id: session.id.clone(),
+                    },
+                });
+            }
+            Focus::Windows | Focus::Panes => {
+                let Some(window) = self.selected_window() else {
+                    return;
+                };
+                self.modal = Some(Modal::Input {
+                    title: format!("Rename window '{}'", window.name),
+                    buffer: window.name.clone(),
+                    action: InputAction::RenameWindow {
+                        id: window.id.clone(),
+                    },
+                });
+            }
+        }
+    }
+
+    fn start_kill(&mut self) {
+        match self.focus {
+            Focus::Sessions => {
+                let Some(session) = self.selected_session() else {
+                    return;
+                };
+                let current = self
+                    .ctx
+                    .current_session()
+                    .is_some_and(|(id, _)| id == session.id);
+                let warn = if current { " — this is YOUR session!" } else { "" };
+                self.modal = Some(Modal::Confirm {
+                    text: format!("Kill session '{}'{warn}", session.name),
+                    action: ConfirmAction::KillSession {
+                        id: session.id.clone(),
+                    },
+                });
+            }
+            Focus::Windows => {
+                let Some(window) = self.selected_window() else {
+                    return;
+                };
+                self.modal = Some(Modal::Confirm {
+                    text: format!("Kill window '{}: {}'", window.index, window.name),
+                    action: ConfirmAction::KillWindow {
+                        id: window.id.clone(),
+                    },
+                });
+            }
+            Focus::Panes => {
+                let Some(pane) = self.selected_pane() else {
+                    return;
+                };
+                self.modal = Some(Modal::Confirm {
+                    text: format!("Kill pane {} ({})", pane.id, pane.command),
+                    action: ConfirmAction::KillPane {
+                        id: pane.id.clone(),
+                    },
+                });
+            }
+        }
+    }
+
+    fn split(&mut self, right: bool) {
+        if self.focus != Focus::Panes {
+            return;
+        }
+        let Some(pane) = self.selected_pane() else {
+            return;
+        };
+        let id = pane.id.clone();
+        match self.tmux.split_pane(&id, right) {
+            Ok(()) => self.refresh_panes(),
+            Err(e) => self.report(format!("split failed: {e}")),
+        }
+    }
+
+    // ---- modal handling ---------------------------------------------------
+
+    fn on_modal_key(&mut self, key: KeyEvent) {
+        let Some(modal) = self.modal.take() else {
+            return;
+        };
+        match modal {
+            Modal::Help => {
+                // Any key closes help.
+            }
+            Modal::Input {
+                title,
+                mut buffer,
+                action,
+            } => match key.code {
+                KeyCode::Esc => {}
+                KeyCode::Enter => self.commit_input(&action, buffer.trim()),
+                KeyCode::Backspace => {
+                    buffer.pop();
+                    self.modal = Some(Modal::Input {
+                        title,
+                        buffer,
+                        action,
+                    });
+                }
+                KeyCode::Char(c) => {
+                    buffer.push(c);
+                    self.modal = Some(Modal::Input {
+                        title,
+                        buffer,
+                        action,
+                    });
+                }
+                _ => {
+                    self.modal = Some(Modal::Input {
+                        title,
+                        buffer,
+                        action,
+                    });
+                }
+            },
+            Modal::Confirm { text, action } => match key.code {
+                KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
+                    self.commit_confirm(&action)
+                }
+                KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {}
+                _ => self.modal = Some(Modal::Confirm { text, action }),
+            },
+        }
+    }
+
+    fn commit_input(&mut self, action: &InputAction, value: &str) {
+        let name = if value.is_empty() { None } else { Some(value) };
+        let result = match action {
+            InputAction::NewSession => self
+                .tmux
+                .new_session(name, None)
+                .map(|s| self.report(format!("created session '{}'", s.name))),
+            InputAction::NewWindow { session_id } => self
+                .tmux
+                .new_window(session_id, name, None)
+                .map(|w| self.report(format!("created window '{}'", w.name))),
+            InputAction::RenameSession { id } => match name {
+                Some(name) => self.tmux.rename_session(id, name),
+                None => Ok(()),
+            },
+            InputAction::RenameWindow { id } => match name {
+                Some(name) => self.tmux.rename_window(id, name),
+                None => Ok(()),
+            },
+        };
+        if let Err(e) = result {
+            self.report(format!("error: {e}"));
+        }
+        self.refresh_all();
+    }
+
+    fn commit_confirm(&mut self, action: &ConfirmAction) {
+        let result = match action {
+            ConfirmAction::KillSession { id } => self.tmux.kill_session(id),
+            ConfirmAction::KillWindow { id } => self.tmux.kill_window(id),
+            ConfirmAction::KillPane { id } => self.tmux.kill_pane(id),
+        };
+        if let Err(e) = result {
+            self.report(format!("error: {e}"));
+        }
+        self.refresh_all();
+    }
+}
+
+fn clamp(state: &mut ListState, len: usize) {
+    match state.selected() {
+        Some(_) if len == 0 => state.select(None),
+        Some(i) if i >= len => state.select(Some(len - 1)),
+        _ => {}
+    }
+}

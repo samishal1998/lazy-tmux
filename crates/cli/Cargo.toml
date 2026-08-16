@@ -1,0 +1,17 @@
+[package]
+name = "lazytmux-cli"
+description = "lazy-tmux: modern subcommands, interactive prompts, and a TUI for tmux"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "ltm"
+path = "src/main.rs"
+
+[dependencies]
+lazytmux-core.workspace = true
+lazytmux-tui.workspace = true
+anyhow.workspace = true
+clap = { version = "4", features = ["derive"] }
+inquire = "0.7"

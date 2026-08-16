@@ -1,0 +1,11 @@
+[package]
+name = "lazytmux-tui"
+description = "Ratatui session manager for lazy-tmux"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+lazytmux-core.workspace = true
+anyhow.workspace = true
+ratatui = "0.29"

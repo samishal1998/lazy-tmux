@@ -1,0 +1,9 @@
+[package]
+name = "lazytmux-core"
+description = "Core tmux interaction and context detection for lazy-tmux"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+thiserror.workspace = true

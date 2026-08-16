@@ -1,0 +1,19 @@
+[workspace]
+resolver = "2"
+members = ["crates/core", "crates/tui", "crates/cli"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/samishal1998/lazy-tmux"
+
+[workspace.dependencies]
+lazytmux-core = { path = "crates/core" }
+lazytmux-tui = { path = "crates/tui" }
+anyhow = "1"
+thiserror = "2"
+
+[profile.release]
+lto = true
+strip = true
