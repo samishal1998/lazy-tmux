@@ -1,9 +1,11 @@
 pub mod completions;
 pub mod context;
 pub mod doctor;
+pub mod extract;
 pub mod macros;
 pub mod menu;
 pub mod options;
 pub mod panes;
 pub mod sessions;
+pub mod update;
 pub mod windows;

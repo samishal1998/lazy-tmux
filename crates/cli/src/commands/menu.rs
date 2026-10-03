@@ -7,7 +7,7 @@ use inquire::{InquireError, Select};
 use lazytmux_core::{Tmux, TmuxContext};
 
 use crate::args::MacrosCmd;
-use crate::commands::{context, doctor, macros, options, panes, sessions, windows};
+use crate::commands::{context, doctor, extract, macros, options, panes, sessions, windows};
 
 pub fn run(tmux: &Tmux, ctx: &TmuxContext) -> Result<()> {
     println!("{}", ctx.describe());
@@ -18,6 +18,7 @@ pub fn run(tmux: &Tmux, ctx: &TmuxContext) -> Result<()> {
                 "attach to a session",
                 "new session",
                 "run a macro",
+                "extract sessions to a macro",
                 "sessions ...",
                 "windows ...",
                 "panes ...",
@@ -42,6 +43,9 @@ pub fn run(tmux: &Tmux, ctx: &TmuxContext) -> Result<()> {
                 Err(e) => Err(e),
             },
             "run a macro" => macros::dispatch(tmux, ctx, Some(MacrosCmd::Run { name: None })),
+            "extract sessions to a macro" => {
+                extract::run(tmux, Vec::new(), false, false, None, false)
+            }
             "sessions ..." => sessions_menu(tmux, ctx),
             "windows ..." => windows_menu(tmux, ctx),
             "panes ..." => panes_menu(tmux, ctx),

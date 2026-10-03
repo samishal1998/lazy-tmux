@@ -23,24 +23,24 @@ use std::env;
 use std::fs;
 use std::path::PathBuf;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
 use crate::tmux::Tmux;
 
-#[derive(Debug, Clone, Deserialize, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct MacroFile {
     #[serde(default)]
     pub macros: BTreeMap<String, Macro>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Macro {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub description: String,
     pub steps: Vec<String>,
     /// Session to attach to (or switch to) after the steps have run.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub attach: Option<String>,
 }
 
@@ -68,6 +68,14 @@ pub fn load() -> Result<BTreeMap<String, Macro>> {
     Ok(file.macros)
 }
 
+/// Render macros as the TOML that `load` reads back.
+pub fn to_toml(macros: &BTreeMap<String, Macro>) -> Result<String> {
+    toml::to_string_pretty(&MacroFile {
+        macros: macros.clone(),
+    })
+    .map_err(|e| Error::Parse(e.to_string()))
+}
+
 /// Run a macro's steps in order. Returns the session to attach to, if the
 /// macro asks for one. Fails fast on the first failing step, reporting it.
 pub fn run(tmux: &Tmux, name: &str, mac: &Macro) -> Result<Option<String>> {
@@ -88,7 +96,11 @@ pub fn run(tmux: &Tmux, name: &str, mac: &Macro) -> Result<Option<String>> {
     Ok(mac.attach.clone())
 }
 
-fn expand_home(arg: String) -> String {
+pub(crate) fn expand_home(arg: String) -> String {
+    // `\~/x` is a literal "~/x" (a window named that way, not a path).
+    if let Some(rest) = arg.strip_prefix("\\~/") {
+        return format!("~/{rest}");
+    }
     if let Some(rest) = arg.strip_prefix("~/") {
         if let Ok(home) = env::var("HOME") {
             return format!("{home}/{rest}");

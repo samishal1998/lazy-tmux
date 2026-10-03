@@ -4,7 +4,7 @@ use std::fmt;
 use std::io::{stdin, IsTerminal};
 
 use anyhow::{bail, Result};
-use inquire::{Confirm, Select, Text};
+use inquire::{Confirm, MultiSelect, Select, Text};
 use lazytmux_core::{Pane, Session, Tmux, Window};
 
 pub fn is_interactive() -> bool {
@@ -66,6 +66,15 @@ pub fn pick_from(sessions: Vec<Session>, prompt: &str) -> Result<Session> {
     require_tty("a session name")?;
     let items: Vec<SessionItem> = sessions.into_iter().map(SessionItem).collect();
     Ok(Select::new(prompt, items).prompt()?.0)
+}
+
+/// Pick any number of sessions (space selects, enter confirms).
+pub fn pick_sessions(sessions: Vec<Session>, prompt: &str) -> Result<Vec<Session>> {
+    let items: Vec<SessionItem> = sessions.into_iter().map(SessionItem).collect();
+    let chosen = MultiSelect::new(prompt, items)
+        .with_help_message("space selects, enter confirms")
+        .prompt()?;
+    Ok(chosen.into_iter().map(|i| i.0).collect())
 }
 
 pub fn pick_window(tmux: &Tmux, session: &Session, prompt: &str) -> Result<Window> {

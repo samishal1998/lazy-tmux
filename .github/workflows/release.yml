@@ -1,0 +1,114 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag to build (e.g. v0.1.0)
+        required: true
+      publish:
+        description: Publish a GitHub release (false = build and upload artifacts only)
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Static musl on Linux: runs on any distro, whatever its libc.
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+          - target: x86_64-apple-darwin
+            os: macos-latest
+          - target: aarch64-apple-darwin
+            os: macos-latest
+    steps:
+      # Build the tag itself, not whatever branch a dispatch ran from. A
+      # dry run (publish=false) has no tag yet, so it builds the branch.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.publish == 'false' && github.ref || github.event.inputs.tag || github.ref }}
+
+      # `ltm update` compares the release tag to the compiled-in version, so
+      # a tag that disagrees with Cargo.toml would make every later update
+      # check lie. Refuse to build it.
+      - name: Tag matches Cargo.toml version
+        env:
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          tag="$TAG"
+          want="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
+          [ "${tag#v}" = "$want" ] || { echo "tag $tag != Cargo.toml version $want" >&2; exit 1; }
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install cross linker
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+          if [ "${{ matrix.target }}" = "aarch64-unknown-linux-musl" ]; then
+            sudo apt-get install -y gcc-aarch64-linux-gnu
+            echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
+          fi
+
+      - run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Check it is actually static
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: |
+          file target/${{ matrix.target }}/release/ltm
+          docker run --rm -v "$PWD/target/${{ matrix.target }}/release/ltm:/ltm:ro" \
+            alpine:3 /ltm --version
+
+      - name: Package
+        run: |
+          cd target/${{ matrix.target }}/release
+          tar czf "$GITHUB_WORKSPACE/ltm-${{ matrix.target }}.tar.gz" ltm
+          cd "$GITHUB_WORKSPACE"
+          shasum -a 256 "ltm-${{ matrix.target }}.tar.gz" > "ltm-${{ matrix.target }}.tar.gz.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ltm-${{ matrix.target }}
+          path: |
+            ltm-${{ matrix.target }}.tar.gz
+            ltm-${{ matrix.target }}.tar.gz.sha256
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+          path: dist
+      - name: One checksums file for all of them
+        run: cat dist/*.sha256 > dist/SHA256SUMS && rm dist/*.tar.gz.sha256
+      - uses: softprops/action-gh-release@v2
+        if: github.event_name == 'push' || github.event.inputs.publish == 'true'
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          generate_release_notes: true
+          files: |
+            dist/*.tar.gz
+            dist/SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.publish != 'true'
+        with:
+          name: dist
+          path: dist

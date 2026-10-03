@@ -16,11 +16,23 @@ ltm context              # show exactly where you are relative to tmux
 ## Install
 
 ```sh
-cargo install --path crates/cli
+curl -fsSL https://raw.githubusercontent.com/samishal1998/lazy-tmux/main/install.sh | sh
 ```
 
-The binary is `ltm`. Requires tmux (tested with 3.4) and Linux
-(`/proc`-based process-tree detection; elsewhere it degrades to
+Downloads the right static binary for Linux or macOS (x86_64 / aarch64) from
+the latest [GitHub release](https://github.com/samishal1998/lazy-tmux/releases),
+verifies its SHA-256, and installs it to `~/.local/bin/ltm`. Pin a version
+with `LTM_VERSION=v0.1.0`, or choose the directory with `LTM_BIN_DIR`.
+
+Other ways:
+
+```sh
+cargo install --git https://github.com/samishal1998/lazy-tmux lazytmux-cli   # from source
+bedouin install samishal1998/lazy-tmux                                     # via bedouin
+```
+
+Update later with `ltm update` (see below). Requires tmux (tested with 3.4);
+the process-tree context detection is Linux-only (elsewhere it degrades to
 `$TMUX`-only detection).
 
 ## Commands
@@ -36,6 +48,8 @@ aliases: `ltm s ls`, `ltm w n`, `ltm a`).
 | `ltm panes` (`p`) `[-s session] [-w window]` | `list`, `split [--right]`, `kill [index]`, `resize <up\|down\|left\|right> [n]`, `zoom [index]`, `swap [a] [b]`, `rename [index] [title]`, `break [index]`, `select [index]`, `join [index] [--to window] [--right]` |
 | `ltm options` (`o`) | `list`, `mouse [on\|off]`, `status [on\|off]`, `sync [on\|off]`, `get <name>`, `set <name> <value> [--window]` — no value toggles |
 | `ltm macros` (`m`) | `list`, `run [name]`, `show [name]`, `edit` — user-defined tmux command sequences |
+| `ltm extract [sessions…]` | save live sessions as macros: `--all`, `-o FILE`, `--with-running-process` |
+| `ltm update` | update to the latest release: `--check`, `--version vX.Y.Z`, `--force` |
 | `ltm doctor` | check common paper-cuts; `--fix` applies live, `--conf` prints a ~/.tmux.conf snippet |
 | `ltm attach` (`a`) | shortcut for `sessions attach` |
 | `ltm kill-server` | kill the server and every session (with confirm) |
@@ -151,6 +165,48 @@ attach = "dev"   # optional: attach/switch there afterwards
 Steps are tmux commands without the `tmux` prefix, split shell-style (so
 quoted arguments work) with `~/` expanded. `ltm macros run` with no name
 gives a picker; a failing step aborts and reports which step and why.
+
+### Extracting macros from live sessions
+
+`ltm extract` snapshots running sessions into the same macro format, so a
+layout you built by hand can be recreated later or on another machine:
+
+```sh
+ltm extract work                          # one session, to stdout
+ltm extract --all -o ~/sessions.toml      # every session, to a file
+ltm extract work --with-running-process   # also re-run what each pane runs
+```
+
+With no names it opens a multi-select picker. Each session becomes one macro
+holding its windows, panes, working directories (`$HOME` is written as `~`)
+and pane layout. Auto-named windows stay auto-named. To replay on another
+machine, copy the file over and run
+`LAZY_TMUX_MACROS=sessions.toml ltm macros run work` (or merge it into
+`~/.config/lazy-tmux/macros.toml`).
+
+`--with-running-process` (Linux) records each pane's foreground command line
+and types it back in when the macro runs, so `nvim .` or `npm run dev` come
+back too. Idle shells record nothing. Replaying runs real commands: read the
+file first. Not captured: the active window/pane, zoom state, scrollback, and
+program state (an editor reopens, but unsaved buffers are gone). If a shell
+is slow to start, the typed command can be lost.
+
+## Updating
+
+`ltm update` checks the latest release and, if newer, runs the same
+checksum-verified install as the `curl | sh` line, replacing the binary in
+place. `ltm update --check` only reports. Completion files are snapshots, so
+rerun `ltm completions <shell> --install` afterwards.
+
+## Releasing
+
+CI (`.github/workflows/ci.yml`) runs fmt, clippy, tests on Linux and macOS,
+and cross-builds both static Linux targets. To release: bump `version` in
+the root `Cargo.toml`, commit, then `git tag vX.Y.Z && git push --tags`.
+The release workflow refuses a tag that differs from `Cargo.toml`, builds
+four targets, and publishes `ltm-<target>.tar.gz` plus `SHA256SUMS`. To test
+the pipeline without publishing, run the workflow manually with `publish`
+off and read the `dist` artifact.
 
 ## Doctor
 

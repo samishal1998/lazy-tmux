@@ -24,7 +24,7 @@ use crate::tmux::Tmux;
 
 /// Process names that don't count as "nesting" between us and the pane:
 /// running lazy-tmux from a subshell of the pane's shell is still "direct".
-const SHELLS: &[&str] = &[
+pub(crate) const SHELLS: &[&str] = &[
     "sh", "bash", "zsh", "fish", "dash", "ksh", "tcsh", "csh", "nu", "elvish", "xonsh",
 ];
 
@@ -237,7 +237,7 @@ pub fn ancestry() -> Vec<(u32, String)> {
     let mut chain = Vec::new();
     let mut pid = std::process::id();
     for _ in 0..128 {
-        let Some((ppid, comm)) = proc_stat(pid) else {
+        let Some(ProcStat { ppid, comm, .. }) = proc_stat(pid) else {
             if chain.is_empty() {
                 chain.push((pid, String::new()));
             }
@@ -255,15 +255,28 @@ pub fn ancestry() -> Vec<(u32, String)> {
 /// Parse `/proc/<pid>/stat` into (ppid, comm). The comm field is enclosed in
 /// parentheses and may itself contain spaces or parentheses, so split on the
 /// *last* closing paren.
-fn proc_stat(pid: u32) -> Option<(u32, String)> {
+pub(crate) struct ProcStat {
+    pub ppid: u32,
+    pub comm: String,
+    /// Process group, and the foreground process group of the controlling
+    /// terminal (-1 when there is none).
+    pub pgrp: u32,
+    pub tpgid: i64,
+}
+
+pub(crate) fn proc_stat(pid: u32) -> Option<ProcStat> {
     let stat = fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
     let open = stat.find('(')?;
     let close = stat.rfind(')')?;
     let comm = stat.get(open + 1..close)?.to_string();
     let rest: Vec<&str> = stat.get(close + 1..)?.split_whitespace().collect();
-    // fields after comm: state, ppid, ...
-    let ppid = rest.get(1)?.parse().ok()?;
-    Some((ppid, comm))
+    // fields after comm: state, ppid, pgrp, session, tty_nr, tpgid, ...
+    Some(ProcStat {
+        ppid: rest.get(1)?.parse().ok()?,
+        comm,
+        pgrp: rest.get(2)?.parse().ok()?,
+        tpgid: rest.get(5)?.parse().ok()?,
+    })
 }
 
 #[cfg(test)]

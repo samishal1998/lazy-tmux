@@ -104,6 +104,31 @@ Hard rules:
   level); the TUI is the visual manager. All three call the same
   command fns with `None` args.
 
+## Release, install, update, extract
+
+- **Release**: tag `vX.Y.Z` (must equal root `Cargo.toml` version; the
+  workflow checks) -> `release.yml` builds 4 targets (static musl on
+  Linux; aarch64 via `gcc-aarch64-linux-gnu`) and publishes
+  `ltm-<target>.tar.gz` (just the `ltm` binary) + one `SHA256SUMS`.
+  `workflow_dispatch` with `publish=false` builds without publishing.
+  Never tag/publish without the owner asking. Style copied from
+  samishal1998/bedouin; `bedouin.yaml` at the root is the bedouin manifest.
+- **install.sh** is the single install path. `ltm update` embeds it
+  (`include_str!`) and pipes it to `sh` with `LTM_VERSION`/`LTM_BIN_DIR`
+  and `LTM_UPDATE=1` (quiet mode). `LTM_BASE_URL=file:///dir` installs from
+  a local directory: this is how install/update are tested offline.
+  Latest tag = `/releases/latest` redirect via curl (no API, no JSON).
+  Changing release asset names means old binaries' `update` breaks: keep
+  `ltm-<target>.tar.gz`.
+- **extract** (`core/src/extract.rs`, pure `to_macro` + `/proc`
+  `foreground_command`): generated steps never use window/pane indexes
+  (they differ per machine); window being built is `<sess>:$`, pane being
+  built is the active pane (`split-window` without `-d`). First window is
+  `new-session -x 300 -y 100` so many-pane splits fit before
+  `select-layout` sets the real size. Foreground process = the pane
+  shell's `tpgid` leader's `/proc/<pid>/cmdline`; skipped if it shares
+  our own process group (the pane running extract).
+
 ## Testing recipes (headless, no real terminal)
 
 Drive everything through a detached tmux session:
@@ -142,6 +167,8 @@ against a scratch session as above.
   (owner's explicit request). Author `samishal1998 <samishal.1998@gmail.com>`.
 - Push to `main` on GitHub `samishal1998/lazy-tmux` (gh CLI is
   authenticated on this machine).
+- `cargo fmt --all` before committing (CI enforces `--check`, clippy
+  `-D warnings`).
 - Keep the README command table + TUI key list in sync with new verbs;
   completions need no repo update (runtime-generated).
 - New subcommand checklist: core method → args enum variant → command fn

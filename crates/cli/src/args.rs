@@ -127,6 +127,35 @@ pub enum Cmd {
         #[arg(long)]
         install: bool,
     },
+    /// Save live sessions as macros (to stdout or a file) to recreate later
+    Extract {
+        /// Sessions to extract (omit to pick interactively)
+        sessions: Vec<String>,
+        /// Extract every session
+        #[arg(short, long)]
+        all: bool,
+        /// Also record the command each pane is running, and re-run it on restore
+        #[arg(long)]
+        with_running_process: bool,
+        /// Write to this file instead of stdout
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+        /// Overwrite --output if it exists
+        #[arg(long)]
+        force: bool,
+    },
+    /// Update ltm to the latest GitHub release
+    Update {
+        /// Only report whether a newer release exists
+        #[arg(long)]
+        check: bool,
+        /// Install this release (e.g. v0.2.0) instead of the latest
+        #[arg(long)]
+        version: Option<String>,
+        /// Reinstall even if already up to date
+        #[arg(long)]
+        force: bool,
+    },
     /// Open the TUI session manager (also the default with no arguments)
     Ui,
 }

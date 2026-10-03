@@ -55,6 +55,18 @@ fn run(cli: Cli) -> Result<()> {
         Some(Cmd::KillServer { yes }) => commands::sessions::kill_server(&tmux, yes),
         Some(Cmd::Options { cmd }) => commands::options::dispatch(&tmux, &ctx, cmd),
         Some(Cmd::Macros { cmd }) => commands::macros::dispatch(&tmux, &ctx, cmd),
+        Some(Cmd::Extract {
+            sessions,
+            all,
+            with_running_process,
+            output,
+            force,
+        }) => commands::extract::run(&tmux, sessions, all, with_running_process, output, force),
+        Some(Cmd::Update {
+            check,
+            version,
+            force,
+        }) => commands::update::run(check, version, force),
         Some(Cmd::Doctor { fix, conf }) => commands::doctor::run(&tmux, fix, conf),
         Some(Cmd::Windows { session, cmd }) => match cmd.unwrap_or(WindowsCmd::List) {
             WindowsCmd::List => commands::windows::list(&tmux, &ctx, session),

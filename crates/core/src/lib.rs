@@ -7,6 +7,7 @@
 pub mod attach;
 pub mod context;
 pub mod error;
+pub mod extract;
 pub mod macros;
 pub mod model;
 pub mod tmux;
