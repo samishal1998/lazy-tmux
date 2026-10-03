@@ -2,7 +2,7 @@
 
 use std::time::{Duration, Instant};
 
-use lazytmux_core::{Location, Pane, ResizeDir, Session, TmuxContext, Tmux, Window};
+use lazytmux_core::{Location, Pane, ResizeDir, Session, Tmux, TmuxContext, Window};
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::widgets::ListState;
 
@@ -396,7 +396,11 @@ impl App {
                     .ctx
                     .current_session()
                     .is_some_and(|(id, _)| id == session.id);
-                let warn = if current { " — this is YOUR session!" } else { "" };
+                let warn = if current {
+                    " — this is YOUR session!"
+                } else {
+                    ""
+                };
                 self.modal = Some(Modal::Confirm {
                     text: format!("Kill session '{}'{warn}", session.name),
                     action: ConfirmAction::KillSession {

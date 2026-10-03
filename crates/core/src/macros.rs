@@ -52,9 +52,7 @@ pub fn config_path() -> PathBuf {
     }
     let config_dir = env::var("XDG_CONFIG_HOME")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            PathBuf::from(env::var("HOME").unwrap_or_default()).join(".config")
-        });
+        .unwrap_or_else(|_| PathBuf::from(env::var("HOME").unwrap_or_default()).join(".config"));
     config_dir.join("lazy-tmux").join("macros.toml")
 }
 
@@ -65,8 +63,8 @@ pub fn load() -> Result<BTreeMap<String, Macro>> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(BTreeMap::new()),
         Err(e) => return Err(e.into()),
     };
-    let file: MacroFile = toml::from_str(&text)
-        .map_err(|e| Error::Parse(format!("{}: {e}", path.display())))?;
+    let file: MacroFile =
+        toml::from_str(&text).map_err(|e| Error::Parse(format!("{}: {e}", path.display())))?;
     Ok(file.macros)
 }
 
@@ -84,9 +82,8 @@ pub fn run(tmux: &Tmux, name: &str, mac: &Macro) -> Result<Option<String>> {
             continue;
         }
         let args: Vec<String> = args.into_iter().map(expand_home).collect();
-        tmux.run(&args).map_err(|e| {
-            Error::Tmux(format!("macro '{name}' step {} ({step}): {e}", i + 1))
-        })?;
+        tmux.run(&args)
+            .map_err(|e| Error::Tmux(format!("macro '{name}' step {} ({step}): {e}", i + 1)))?;
     }
     Ok(mac.attach.clone())
 }

@@ -37,7 +37,11 @@ fn resolve_pane(
             .into_iter()
             .find(|p| p.index.to_string() == t || p.id == t)
             .ok_or_else(|| {
-                anyhow!("no pane '{t}' in window '{}: {}'", window.index, window.name)
+                anyhow!(
+                    "no pane '{t}' in window '{}: {}'",
+                    window.index,
+                    window.name
+                )
             }),
         None => interactive::pick_pane(panes, prompt),
     }
@@ -51,7 +55,10 @@ pub fn list(
 ) -> Result<()> {
     let (session, window) = resolve_scope(tmux, ctx, session_flag, window_flag)?;
     let panes = tmux.list_panes(&windows::target_of(&session, &window))?;
-    println!("session '{}', window '{}: {}':", session.name, window.index, window.name);
+    println!(
+        "session '{}', window '{}: {}':",
+        session.name, window.index, window.name
+    );
     let rows: Vec<Vec<String>> = panes
         .iter()
         .map(|p| {

@@ -38,10 +38,9 @@ fn list(tmux: &Tmux, ctx: &TmuxContext) -> Result<()> {
         if let Ok(window) = windows::active_window(tmux, &session) {
             rows.push(vec![
                 "sync".into(),
-                flag(tmux.window_flag(
-                    &windows::target_of(&session, &window),
-                    "synchronize-panes",
-                )?),
+                flag(
+                    tmux.window_flag(&windows::target_of(&session, &window), "synchronize-panes")?,
+                ),
                 format!("type into all panes of window '{}' at once", window.name),
             ]);
         }

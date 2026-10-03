@@ -30,7 +30,11 @@ pub fn list(tmux: &Tmux, ctx: &TmuxContext) -> Result<()> {
     let rows: Vec<Vec<String>> = sessions
         .iter()
         .map(|s| {
-            let marker = if Some(&s.id) == current.as_ref() { "*" } else { " " };
+            let marker = if Some(&s.id) == current.as_ref() {
+                "*"
+            } else {
+                " "
+            };
             vec![
                 format!("{marker} {}", s.name),
                 s.windows.to_string(),
@@ -121,7 +125,10 @@ pub fn detach(tmux: &Tmux, name: Option<String>) -> Result<()> {
         return Ok(());
     }
     tmux.detach_clients(&session.id)?;
-    println!("detached {} client(s) from '{}'", session.attached, session.name);
+    println!(
+        "detached {} client(s) from '{}'",
+        session.attached, session.name
+    );
     Ok(())
 }
 
@@ -131,10 +138,7 @@ pub fn kill_server(tmux: &Tmux, yes: bool) -> Result<()> {
         println!("no server running");
         return Ok(());
     }
-    if !yes
-        && !interactive::confirm(&format!(
-            "Kill the tmux server and ALL {count} session(s)?"
-        ))?
+    if !yes && !interactive::confirm(&format!("Kill the tmux server and ALL {count} session(s)?"))?
     {
         println!("aborted");
         return Ok(());

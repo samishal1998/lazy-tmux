@@ -37,7 +37,11 @@ impl fmt::Display for PaneItem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let p = &self.0;
         let active = if p.active { ", active" } else { "" };
-        write!(f, "{}: {} [{}x{}{active}]", p.index, p.command, p.width, p.height)
+        write!(
+            f,
+            "{}: {} [{}x{}{active}]",
+            p.index, p.command, p.width, p.height
+        )
     }
 }
 

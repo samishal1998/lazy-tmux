@@ -13,8 +13,6 @@ use lazytmux_core::{Tmux, TmuxContext};
 
 use args::{Cli, Cmd, PanesCmd, SessionsCmd, WindowsCmd};
 
-
-
 fn main() {
     // Rust ignores SIGPIPE by default, which turns `ltm ... | head` into a
     // panic on a closed pipe. Restore the default: die quietly instead.
@@ -41,9 +39,7 @@ fn run(cli: Cli) -> Result<()> {
     match cli.command {
         None | Some(Cmd::Ui) => ui(&tmux, &ctx),
         Some(Cmd::Interactive) => commands::menu::run(&tmux, &ctx),
-        Some(Cmd::Completions { shell, install }) => {
-            commands::completions::run(shell, install)
-        }
+        Some(Cmd::Completions { shell, install }) => commands::completions::run(shell, install),
         Some(Cmd::Context) => commands::context::show(&ctx),
         Some(Cmd::Attach { name }) => commands::sessions::attach(&tmux, &ctx, name),
         Some(Cmd::Sessions { cmd }) => match cmd.unwrap_or(SessionsCmd::List) {
@@ -53,9 +49,7 @@ fn run(cli: Cli) -> Result<()> {
             }
             SessionsCmd::Attach { name } => commands::sessions::attach(&tmux, &ctx, name),
             SessionsCmd::Kill { name, yes } => commands::sessions::kill(&tmux, name, yes),
-            SessionsCmd::Rename { from, to } => {
-                commands::sessions::rename(&tmux, &ctx, from, to)
-            }
+            SessionsCmd::Rename { from, to } => commands::sessions::rename(&tmux, &ctx, from, to),
             SessionsCmd::Detach { name } => commands::sessions::detach(&tmux, name),
         },
         Some(Cmd::KillServer { yes }) => commands::sessions::kill_server(&tmux, yes),
@@ -112,9 +106,7 @@ fn run(cli: Cli) -> Result<()> {
             PanesCmd::Zoom { target } => {
                 commands::panes::zoom(&tmux, &ctx, session, window, target)
             }
-            PanesCmd::Swap { a, b } => {
-                commands::panes::swap(&tmux, &ctx, session, window, a, b)
-            }
+            PanesCmd::Swap { a, b } => commands::panes::swap(&tmux, &ctx, session, window, a, b),
             PanesCmd::Rename { target, title } => {
                 commands::panes::rename(&tmux, &ctx, session, window, target, title)
             }

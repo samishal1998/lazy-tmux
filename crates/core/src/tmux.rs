@@ -134,7 +134,10 @@ impl Tmux {
         let out = self.run([
             "list-clients",
             "-F",
-            &format!("#{{client_tty}}{}#{{client_session}}", crate::model::SEP_STR),
+            &format!(
+                "#{{client_tty}}{}#{{client_session}}",
+                crate::model::SEP_STR
+            ),
         ])?;
         Ok(out
             .lines()
@@ -174,7 +177,8 @@ impl Tmux {
     }
 
     pub fn rename_session(&self, target: &str, new_name: &str) -> Result<()> {
-        self.run(["rename-session", "-t", target, new_name]).map(|_| ())
+        self.run(["rename-session", "-t", target, new_name])
+            .map(|_| ())
     }
 
     /// Switch the current (or given) client to another session/window.
@@ -223,7 +227,8 @@ impl Tmux {
     }
 
     pub fn rename_window(&self, target: &str, new_name: &str) -> Result<()> {
-        self.run(["rename-window", "-t", target, new_name]).map(|_| ())
+        self.run(["rename-window", "-t", target, new_name])
+            .map(|_| ())
     }
 
     pub fn select_window(&self, target: &str) -> Result<()> {
@@ -236,7 +241,8 @@ impl Tmux {
     /// (tmux `-h`), otherwise below it (tmux `-v`).
     pub fn split_pane(&self, target: &str, right: bool) -> Result<()> {
         let dir = if right { "-h" } else { "-v" };
-        self.run(["split-window", dir, "-d", "-t", target]).map(|_| ())
+        self.run(["split-window", dir, "-d", "-t", target])
+            .map(|_| ())
     }
 
     pub fn select_pane(&self, target: &str) -> Result<()> {
@@ -269,7 +275,8 @@ impl Tmux {
 
     /// Set a pane's title (shown in borders / `#{pane_title}`).
     pub fn set_pane_title(&self, target: &str, title: &str) -> Result<()> {
-        self.run(["select-pane", "-t", target, "-T", title]).map(|_| ())
+        self.run(["select-pane", "-t", target, "-T", title])
+            .map(|_| ())
     }
 
     /// Break a pane out into its own window (stays in the background).
@@ -290,7 +297,8 @@ impl Tmux {
     }
 
     pub fn swap_windows(&self, a: &str, b: &str) -> Result<()> {
-        self.run(["swap-window", "-d", "-s", a, "-t", b]).map(|_| ())
+        self.run(["swap-window", "-d", "-s", a, "-t", b])
+            .map(|_| ())
     }
 
     /// Move a window to another session, appending after its last window.
@@ -343,7 +351,8 @@ impl Tmux {
 
     /// Append to a server array option (e.g. terminal-features).
     pub fn append_server_option(&self, name: &str, value: &str) -> Result<()> {
-        self.run(["set-option", "-s", "-a", name, value]).map(|_| ())
+        self.run(["set-option", "-s", "-a", name, value])
+            .map(|_| ())
     }
 
     pub fn show_global_option(&self, name: &str) -> Result<String> {

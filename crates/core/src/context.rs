@@ -54,8 +54,12 @@ pub enum TmuxContext {
         env_present: bool,
     },
     /// `$TMUX` is set but the server (or our pane) is gone.
-    StaleEnv { socket: PathBuf },
-    Outside { server_running: bool },
+    StaleEnv {
+        socket: PathBuf,
+    },
+    Outside {
+        server_running: bool,
+    },
 }
 
 impl TmuxContext {
@@ -96,9 +100,9 @@ impl TmuxContext {
                 ..
             } => {
                 let mut s = match location {
-                    Location::DirectPane => format!(
-                        "inside tmux: session '{session_name}', pane {pane_id} (direct)"
-                    ),
+                    Location::DirectPane => {
+                        format!("inside tmux: session '{session_name}', pane {pane_id} (direct)")
+                    }
                     Location::NestedDescendant { via } => format!(
                         "inside tmux: session '{session_name}', pane {pane_id} (nested via {})",
                         via.join(" > ")
@@ -151,7 +155,9 @@ pub fn detect() -> TmuxContext {
         let env_pane = env::var("TMUX_PANE").ok().unwrap_or_default();
         let pane = panes.iter().find(|p| p.pane_id == env_pane).cloned();
         return match pane {
-            Some(pane) if chain.len() <= 1 => inside(Some(socket), pane, Location::DirectPane, true),
+            Some(pane) if chain.len() <= 1 => {
+                inside(Some(socket), pane, Location::DirectPane, true)
+            }
             Some(pane) => inside(Some(socket), pane, Location::EnvInherited, true),
             None => TmuxContext::StaleEnv { socket },
         };
@@ -205,8 +211,7 @@ fn locate_in_chain(
     chain: &[(u32, String)],
     panes: &[GlobalPane],
 ) -> Option<(GlobalPane, Vec<String>)> {
-    let by_pid: HashMap<u32, &GlobalPane> =
-        panes.iter().map(|p| (p.pid, p)).collect();
+    let by_pid: HashMap<u32, &GlobalPane> = panes.iter().map(|p| (p.pid, p)).collect();
     for (i, (pid, _)) in chain.iter().enumerate() {
         if let Some(pane) = by_pid.get(pid) {
             let mut via: Vec<String> = Vec::new();
@@ -284,11 +289,7 @@ mod tests {
 
     #[test]
     fn subshell_still_counts_as_direct() {
-        let chain = vec![
-            (100, "ltm".into()),
-            (60, "bash".into()),
-            (50, "zsh".into()),
-        ];
+        let chain = vec![(100, "ltm".into()), (60, "bash".into()), (50, "zsh".into())];
         let (_, via) = locate_in_chain(&chain, &[pane(50)]).unwrap();
         assert!(via.is_empty());
     }

@@ -110,8 +110,7 @@ fn edit() -> Result<()> {
     let path = macros::config_path();
     if !path.exists() {
         if let Some(dir) = path.parent() {
-            std::fs::create_dir_all(dir)
-                .with_context(|| format!("creating {}", dir.display()))?;
+            std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
         }
         std::fs::write(&path, macros::TEMPLATE)
             .with_context(|| format!("writing {}", path.display()))?;

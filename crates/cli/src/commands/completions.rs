@@ -37,24 +37,23 @@ pub fn run(shell: Shell, install: bool) -> Result<()> {
 
 fn install_path(shell: Shell) -> Result<(PathBuf, Option<String>)> {
     let home = PathBuf::from(env::var("HOME").context("$HOME is not set")?);
-    let xdg = |var: &str, fallback: PathBuf| {
-        env::var(var).map(PathBuf::from).unwrap_or(fallback)
-    };
+    let xdg = |var: &str, fallback: PathBuf| env::var(var).map(PathBuf::from).unwrap_or(fallback);
     match shell {
         Shell::Bash => Ok((
-            xdg("XDG_DATA_HOME", home.join(".local/share"))
-                .join("bash-completion/completions/ltm"),
+            xdg("XDG_DATA_HOME", home.join(".local/share")).join("bash-completion/completions/ltm"),
             Some("takes effect in new shells (needs the bash-completion package)".into()),
         )),
         Shell::Zsh => {
             // oh-my-zsh already has $ZSH_CUSTOM/completions on fpath —
             // use it when present so no .zshrc edits are needed.
-            let omz_custom = env::var("ZSH_CUSTOM").map(PathBuf::from).unwrap_or_else(|_| {
-                env::var("ZSH")
-                    .map(PathBuf::from)
-                    .unwrap_or_else(|_| home.join(".oh-my-zsh"))
-                    .join("custom")
-            });
+            let omz_custom = env::var("ZSH_CUSTOM")
+                .map(PathBuf::from)
+                .unwrap_or_else(|_| {
+                    env::var("ZSH")
+                        .map(PathBuf::from)
+                        .unwrap_or_else(|_| home.join(".oh-my-zsh"))
+                        .join("custom")
+                });
             if omz_custom.is_dir() {
                 return Ok((
                     omz_custom.join("completions/_ltm"),

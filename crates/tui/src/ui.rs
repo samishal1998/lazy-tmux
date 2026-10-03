@@ -149,10 +149,7 @@ fn draw_panes(frame: &mut Frame, app: &mut App, area: Rect) {
                 active,
                 Span::styled(format!("{}: ", p.index), Style::new().fg(DIM)),
                 Span::raw(p.command.clone()),
-                Span::styled(
-                    format!("  {}x{}", p.width, p.height),
-                    Style::new().fg(DIM),
-                ),
+                Span::styled(format!("  {}x{}", p.width, p.height), Style::new().fg(DIM)),
             ]))
         })
         .collect();

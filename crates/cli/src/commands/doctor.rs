@@ -22,7 +22,10 @@ struct Check {
 }
 
 fn first_is_on(v: &str) -> bool {
-    matches!(v.lines().next().unwrap_or(""), "on" | "always" | "external" | "all")
+    matches!(
+        v.lines().next().unwrap_or(""),
+        "on" | "always" | "external" | "all"
+    )
 }
 
 fn contains_extkeys(v: &str) -> bool {

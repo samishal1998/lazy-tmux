@@ -34,9 +34,7 @@ pub fn resolve_window(
             .list_windows(&session.id)?
             .into_iter()
             .find(|w| w.index.to_string() == t || w.name == t)
-            .ok_or_else(|| {
-                anyhow!("no window '{t}' in session '{}'", session.name)
-            }),
+            .ok_or_else(|| anyhow!("no window '{t}' in session '{}'", session.name)),
         None => interactive::pick_window(tmux, session, prompt),
     }
 }
@@ -209,7 +207,10 @@ pub fn layout(
         None => active_window(tmux, &session)?,
     };
     tmux.next_layout(&target_of(&session, &window))?;
-    println!("cycled layout of window '{}: {}'", window.index, window.name);
+    println!(
+        "cycled layout of window '{}: {}'",
+        window.index, window.name
+    );
     Ok(())
 }
 
